@@ -195,13 +195,7 @@ elseif(HERO_ENABLE_CUDA)
   # a build with no option was an sm_75 build.  -DCMAKE_CUDA_ARCHITECTURES and the CUDAARCHS environment variable win.
   set(_hero_cuda_arch_defaulted OFF)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
-    if(HERO_BUILD_DSV41)
-      # #3935: the DeepSeek engine's own release shape (sm_86, sm_89, sm_120 + PTX 120, as packaging/build_dsv41_cuda.sh), so a hand
-      # build of hero-dsv41 with no architecture runs on an RTX 30, 40 or 50 card; the Qwen engine's default below is unchanged
-      set(CMAKE_CUDA_ARCHITECTURES "86-real;89-real;120" CACHE STRING "CUDA architectures")
-    else()
-      set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "CUDA architectures")
-    endif()
+    set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "CUDA architectures")
     set(_hero_cuda_arch_defaulted ON)
   endif()
   enable_language(CUDA)
@@ -320,7 +314,7 @@ if(HERO_BUILD_TESTS)
   add_executable(gguf_split_test tests/core/gguf_split_test.cpp)
   target_link_libraries(gguf_split_test PRIVATE hero_artifact)
   add_test(NAME gguf_split_test COMMAND gguf_split_test)
-  # the model families (qwen4exp, qwen35moe): the guards, the geometry from metadata, the layout tables (synthetic)
+  # the model family (qwen4exp): the guards, the geometry from metadata, the layout tables (synthetic)
   add_executable(model_family_test tests/core/model_family_test.cpp)
   target_link_libraries(model_family_test PRIVATE hero_artifact)
   add_test(NAME model_family_test COMMAND model_family_test)
@@ -850,142 +844,6 @@ if(HERO_ENABLE_CUDA OR HERO_ENABLE_HIP)
     # C++ runtime sit beside the exe (tools/hip/package_windows.py) and stay normal imports.
     target_link_libraries(hero PRIVATE delayimp)
     target_link_options(hero PRIVATE "LINKER:/DELAYLOAD:hipblas.dll" "LINKER:/DELAYLOAD:libhipblaslt.dll" "LINKER:/DELAYLOAD:rocblas.dll")
-  endif()
-
-  # NEW-MODELS-PLAN.md T1: Qwen3.6-35B-A3B's reference path (one GPU, the model resident, plain kernels), checked
-  # against llama.cpp by tools/qwen35/; the engine itself does not run the family yet
-  add_executable(hero-q36ref src/qwen35/q36ref.cu)
-  target_include_directories(hero-q36ref PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories})
-  target_link_libraries(hero-q36ref PRIVATE hero_kernels hero_warnings ${_hero_gpu_runtime_target})
-  # the engine path for the same family (serve protocol, prompt chunks, decode graph): src/qwen35/q36_engine.cu, a
-  # library that `hero` switches to for a qwen35moe model (the family switch at the top of its main) and that
-  # hero-q36 wraps on its own.  Not on gfx906 (#3172, #3271): it calls cuBLAS entry points the wave64 compat layer does
-  # not map (cublasSgemm, cublasGemmStridedBatchedEx) and its kernels assume 32-lane warps; main() guards every use with
-  # HERO_HAVE_QWEN35, so a gfx906 build links and runs the Qwen3.8 family, and `hero --families` says so
-  if(NOT HERO_HIP_GFX906)
-  add_library(hero_qwen35 STATIC src/qwen35/q36_engine.cu)
-  target_include_directories(hero_qwen35 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include PRIVATE ${_hero_gpu_include_directories})
-  target_link_libraries(hero_qwen35 PRIVATE hero_prefill hero_kernels hero_warnings ${_hero_gpu_runtime_target})
-  if(HERO_NATIVE_EXPERTS)
-    # the hybrid mode (experts that do not all fit in VRAM): the CPU expert pool on ggml-cpu's arithmetic
-    target_link_libraries(hero_qwen35 PRIVATE hero_kernels_cpu)
-    target_compile_definitions(hero_qwen35 PRIVATE HERO_Q36_CPU_POOL=1)
-  endif()
-  add_executable(hero-q36 src/qwen35/q36_main.cpp)
-  hero_utf8_manifest(hero-q36)
-  target_link_libraries(hero-q36 PRIVATE hero_qwen35 ${_hero_gpu_runtime_target})
-  target_link_libraries(hero PRIVATE hero_qwen35)
-  target_compile_definitions(hero PRIVATE HERO_HAVE_QWEN35=1)
-  endif()
-
-  # DeepSeek-V4.1-Flash: the third engine path (src/dsv41, from Project Maya's maya-ds4, MIT, third_party/project-maya).
-  # Its own executable for now (hero-dsv41); a family switch in `hero` comes after first light.  OFF by default: it
-  # changes no existing target (the vendored kernels live in hero::dsv41k, so no symbol is shared with hero_kernels).
-  option(HERO_BUILD_DSV41 "Build the DeepSeek-V4.1 engine path (hero-dsv41)" OFF)
-  if(HERO_BUILD_DSV41 AND NOT HERO_HIP_GFX906)
-    add_library(hero_dsv41_kernels STATIC src/dsv41/vendor/exl3.cu src/dsv41/vendor/sampler.cu src/dsv41/vendor/moe_win.cu
-                src/dsv41/vendor/exl3_cpu.cpp)
-    if(NOT HERO_ENABLE_HIP)   # (the pre-sm_80 NVIDIA decode kernels exl3.cu dispatches to)
-      target_sources(hero_dsv41_kernels PRIVATE src/dsv41/vendor/exl3_legacy.cu)
-    endif()
-    target_include_directories(hero_dsv41_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories})
-    target_link_libraries(hero_dsv41_kernels PUBLIC ${_hero_gpu_runtime_target})
-    add_executable(hero-dsv41 src/dsv41/ds4_main.cpp src/dsv41/ds4_model.cu src/dsv41/ds4_kernels.cu src/dsv41/ds4_vision.cu
-                   src/dsv41/ds4_gguf.cu src/dsv41/ds4_gguf_cpu.cpp src/dsv41/ds4_iq.cu src/dsv41/ds4_iq_cpu.cpp
-                   src/dsv41/ds4_tq.cu src/dsv41/ds4_tq_cpu.cpp src/dsv41/ds4_gg_cpu.cpp src/dsv41/ds4_packinfo.cpp)
-    # the commit the binary was built from, readable with --version (set -DHERO_BUILD_ID=... for a tree without .git)
-    if(NOT HERO_BUILD_ID AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/BUILD_ID)   # (a git archive has no .git: the packer writes the commit here)
-      file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/BUILD_ID HERO_BUILD_ID LIMIT_COUNT 1)
-    endif()
-    if(NOT HERO_BUILD_ID)
-      execute_process(COMMAND git -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse --short=9 HEAD OUTPUT_VARIABLE HERO_BUILD_ID
-                      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-    endif()
-    if(NOT HERO_BUILD_ID)
-      set(HERO_BUILD_ID unknown)
-    endif()
-    set_source_files_properties(src/dsv41/ds4_main.cpp PROPERTIES COMPILE_DEFINITIONS "DS4_BUILD_ID=\"${HERO_BUILD_ID}\"")
-    target_include_directories(hero-dsv41 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories}
-                               ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill)
-    # hero_prefill: the RDNA3 WMMA dense GEMM (src/prefill/wmma_gemm.cu), which gemm() prefers over hipBLAS on gfx11 (measured
-    # 4.97 -> 20-40 TFLOPS on this part: the chunked prompt's dense GEMM is 11.1 s of a 4K prompt at the library's rate)
-    target_link_libraries(hero-dsv41 PRIVATE hero_prefill hero_dsv41_kernels ${_hero_gpu_runtime_target} ${_hero_gpu_blas_target})
-    find_package(Threads REQUIRED)
-    target_link_libraries(hero-dsv41 PRIVATE Threads::Threads)
-    if(WIN32 AND HERO_ENABLE_HIP)   # cudaMemGetInfo is the DXGI-budgeted hip_compat::mem_get_info (src/core/device.cu): on a Strix Halo the
-      # carve-out is not all the GPU may use, and the engine sizes its expert tiers by what the budget says is free
-      target_link_libraries(hero-dsv41 PRIVATE hero_core)
-    endif()
-    if(HERO_NATIVE_EXPERTS)   # HERO's CPU trellis kernels (tq_cpu.hpp) for the trellis experts on the CPU lane
-      target_link_libraries(hero-dsv41 PRIVATE hero_kernels_cpu)
-      target_compile_definitions(hero-dsv41 PRIVATE HERO_DSV41_TQ_CPU=1)
-    endif()
-    if(HERO_NATIVE_EXPERTS)
-      # the CPU lane's ggml-type rows: ggml-cpu's dots against HERO's AVX2 i-quant rows (bits and GB/s); no GPU, no model
-      add_executable(ds4_gg_bench tests/dsv41/gg_dot_bench.cpp src/dsv41/ds4_gg_cpu.cpp)
-      target_include_directories(ds4_gg_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src/dsv41
-                                 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml)
-      target_link_libraries(ds4_gg_bench PRIVATE hero_kernels_cpu Threads::Threads)
-      target_compile_definitions(ds4_gg_bench PRIVATE HERO_DSV41_TQ_CPU=1)
-    endif()
-    if(HERO_NATIVE_EXPERTS)
-      # the trellis experts (device kernels ds4_tq.cu, CPU lane ds4_tq_cpu.cpp) against a double reference; needs a GPU, no model
-      # both test .cpp files launch kernels, so they compile as HIP on the AMD backend and as CUDA on the NVIDIA one
-      if(HERO_ENABLE_HIP)
-        set(_ds4_test_lang HIP)
-      elseif(HERO_ENABLE_CUDA)
-        set(_ds4_test_lang CUDA)
-      else()
-        set(_ds4_test_lang CXX)
-      endif()
-      set_source_files_properties(tests/dsv41/tq_expert_test.cpp PROPERTIES LANGUAGE ${_ds4_test_lang})
-      add_executable(ds4_tq_test tests/dsv41/tq_expert_test.cpp src/dsv41/ds4_tq.cu src/dsv41/ds4_iq.cu src/dsv41/ds4_tq_cpu.cpp
-                     src/dsv41/ds4_iq_cpu.cpp src/dsv41/ds4_gg_cpu.cpp tools/trellis/tqenc.cpp)
-      target_include_directories(ds4_tq_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories}
-                                 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cpu)
-      target_link_libraries(ds4_tq_test PRIVATE hero_kernels_cpu ${_hero_gpu_runtime_target} Threads::Threads)
-      target_compile_definitions(ds4_tq_test PRIVATE HERO_DSV41_TQ_CPU=1)
-      # the same with the plain-FMA tile instead of the gfx12 WMMA one (what CUDA and gfx11 builds run)
-      add_executable(ds4_tq_test_portable tests/dsv41/tq_expert_test.cpp src/dsv41/ds4_tq.cu src/dsv41/ds4_iq.cu src/dsv41/ds4_tq_cpu.cpp
-                     src/dsv41/ds4_iq_cpu.cpp src/dsv41/ds4_gg_cpu.cpp tools/trellis/tqenc.cpp)
-      target_include_directories(ds4_tq_test_portable PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories}
-                                 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cpu)
-      target_link_libraries(ds4_tq_test_portable PRIVATE hero_kernels_cpu ${_hero_gpu_runtime_target} Threads::Threads)
-      target_compile_definitions(ds4_tq_test_portable PRIVATE HERO_DSV41_TQ_CPU=1 DS4_TQ_PORTABLE=1)
-      if(HERO_ENABLE_HIP)
-        target_compile_options(ds4_tq_test_portable PRIVATE "$<$<COMPILE_LANGUAGE:HIP,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/hero/dsv41/hip_extra.h>")
-      endif()
-      if(HERO_ENABLE_HIP)
-        target_compile_options(ds4_tq_test PRIVATE "$<$<COMPILE_LANGUAGE:HIP,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/hero/dsv41/hip_extra.h>")
-      endif()
-      # the i-quant experts (ds4_iq.cu) against ggml's own decode of the same blocks + a double reference, device and CPU
-      # lane, for every type the device takes: the gate a new type (IQ2_XS ..) has to pass before the engine uses it
-      set_source_files_properties(tests/dsv41/iq_expert_test.cpp PROPERTIES LANGUAGE ${_ds4_test_lang})
-      add_executable(ds4_iq_test tests/dsv41/iq_expert_test.cpp src/dsv41/ds4_iq.cu src/dsv41/ds4_iq_cpu.cpp
-                     src/dsv41/ds4_gg_cpu.cpp src/dsv41/ds4_tq.cu src/dsv41/ds4_tq_cpu.cpp)
-      target_include_directories(ds4_iq_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_hero_gpu_include_directories}
-                                 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cpu)
-      target_link_libraries(ds4_iq_test PRIVATE hero_kernels_cpu ${_hero_gpu_runtime_target} Threads::Threads)
-      target_compile_definitions(ds4_iq_test PRIVATE HERO_DSV41_TQ_CPU=1)
-      if(HERO_ENABLE_HIP)
-        target_compile_options(ds4_iq_test PRIVATE "$<$<COMPILE_LANGUAGE:HIP,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/hero/dsv41/hip_extra.h>")
-      endif()
-      # the kept conversations' .meta file and prefix matching (ds4_slotmeta.hpp): no GPU, no model
-      add_executable(ds4_slot_test tests/dsv41/slot_test.cpp)
-      target_include_directories(ds4_slot_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsv41)
-      target_compile_features(ds4_slot_test PRIVATE cxx_std_17)
-      add_executable(ds4_experts_rule_test tests/dsv41/experts_rule_test.cpp)
-      target_include_directories(ds4_experts_rule_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsv41)
-      target_compile_features(ds4_experts_rule_test PRIVATE cxx_std_17)
-      add_executable(ds4_pick_rule_test tests/dsv41/pick_rule_test.cpp)
-      target_include_directories(ds4_pick_rule_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsv41)
-      target_compile_features(ds4_pick_rule_test PRIVATE cxx_std_17)
-    endif()
-    if(HERO_ENABLE_HIP)
-      foreach(_t hero_dsv41_kernels hero-dsv41)
-        target_compile_options(${_t} PRIVATE "$<$<COMPILE_LANGUAGE:HIP,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/hero/dsv41/hip_extra.h>")
-      endforeach()
-    endif()
   endif()
 
   if(HERO_ENABLE_HIP)
@@ -1633,11 +1491,6 @@ if(HERO_ENABLE_CUDA OR HERO_ENABLE_HIP)
   target_include_directories(ple_residency_test PRIVATE include)
   add_test(NAME ple_residency_test COMMAND ple_residency_test)
 
-  # 0.2.7 (#3911): the qwen35 host sampler's penalties on a short (draft-vocab) logit row; header-only, CPU
-  add_executable(qwen35_sampling_test src/qwen35/sampling_test.cpp)
-  target_include_directories(qwen35_sampling_test PRIVATE include)
-  add_test(NAME qwen35_sampling_test COMMAND qwen35_sampling_test)
-
   # The GPU test runs ON THE TARGET PC. `--selftest` allocates
   # and writes real VRAM, so a machine without a device fails this test rather than skipping it silently -
   # which is correct: an engine that targets one GPU should not report a pass for having no GPU.
@@ -1864,13 +1717,6 @@ if(HERO_NATIVE_EXPERTS)
     foreach(_f GGML_AVX GGML_AVX2 GGML_FMA GGML_F16C GGML_BMI2)
       set(${_f} ON CACHE BOOL "" FORCE)
     endforeach()
-    # The DeepSeek engine (HERO_BUILD_DSV41) builds ggml-cpu with BMI2 OFF: ggml's IQ1_S / IQ1_M dots use _pdep_u64 with it, and AMD
-    # Zen 1/2 run PDEP in microcode (EPYC 7452, IQ1_M one-token dot 1.8 GB/s against 32 GB/s without it; IQ1_S 2.3 against 37). The
-    # results are bit-identical either way (ds4_gg_bench --dump, types 19 and 29, 1-16 tokens). Other engines keep BMI2 until their
-    # next rebuild is looked at: no Qwen package changes with this commit.
-    if(HERO_BUILD_DSV41)
-      set(GGML_BMI2 OFF CACHE BOOL "" FORCE)
-    endif()
   elseif(HERO_ISA_FLOOR)
     # the experimental older-CPU build (HERO_ISA_FLOOR above): one ggml-cpu for the floor, ggml's "sandybridge"
     # feature set (SSE4.2 + AVX) or SSE4.2 alone - not the build host's, which may be newer than the PC it runs on.
@@ -2656,7 +2502,7 @@ if(HERO_ENABLE_CUDA AND HERO_BUILD_TESTS AND NOT HERO_ENABLE_HIP AND NOT HERO_HI
   find_package(Python3 QUIET COMPONENTS Interpreter)
   if(Python3_Interpreter_FOUND)
     set(_hero_spill_libs)
-    foreach(_t hero_kernels hero_core hero_engine hero_prefill hero_qwen35 hero_mmq hero_mmq_w4a4 hero_kq)
+    foreach(_t hero_kernels hero_core hero_engine hero_prefill hero_mmq hero_mmq_w4a4 hero_kq)
       if(TARGET ${_t})
         list(APPEND _hero_spill_libs $<TARGET_FILE:${_t}>)
       endif()
@@ -2715,18 +2561,3 @@ if(HERO_HIP_GFX906)
   target_link_libraries(gfx906_qsa_query_swizzle_probe PRIVATE hero_kernels ${_hero_gpu_runtime_target})
 endif()
 
-# ---- DeepSeek-V4.1 on a box with no GPU toolkit ------------------------------------------------
-# The whole DSV41 block above lives inside if(HERO_ENABLE_CUDA OR HERO_ENABLE_HIP), so with neither backend on
-# -DHERO_BUILD_DSV41=ON was silently unused and the host-side benchmark could not be built at all (found on p1004,
-# 2026-10-23: the CPU lane is exactly what a box without a usable GPU needs to measure).  This branch builds the one target
-# that has no device code, so the CPU-lane A/B runs anywhere.
-if(HERO_BUILD_DSV41 AND NOT HERO_ENABLE_CUDA AND NOT HERO_ENABLE_HIP AND NOT HERO_HIP_GFX906)
-  message(STATUS "HERO_BUILD_DSV41: no GPU backend, building the host-side benchmark only (ds4_gg_bench)")
-  if(HERO_NATIVE_EXPERTS)
-    add_executable(ds4_gg_bench tests/dsv41/gg_dot_bench.cpp src/dsv41/ds4_gg_cpu.cpp)
-    target_include_directories(ds4_gg_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src/dsv41
-                               ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ggml)
-    target_link_libraries(ds4_gg_bench PRIVATE hero_kernels_cpu Threads::Threads)
-    target_compile_definitions(ds4_gg_bench PRIVATE HERO_DSV41_TQ_CPU=1)
-  endif()
-endif()
