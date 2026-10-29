@@ -30,3 +30,6 @@ __pycache__/
 .idea/
 .cursor/
 node_modules/
+
+# macOS
+.DS_Store
