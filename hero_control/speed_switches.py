@@ -7,7 +7,7 @@ reads that file and fails when the two disagree, so the Terminal and the app can
 
 - "Faster long prompts" (Qwen KVA) is OFF by default (owner decision, 26 October): ``HERO_KVA=1`` turns it on.  A file that holds ``HERO_KVA=0`` (the
   off switch of an earlier 0.2.7 test build) reads as off, which is what it is now.
-- "Faster answers on Radeon RX 9000 / AI PRO R9700" and "DeepSeek speed-ups" are ON by default; turning them off writes their entries.
+- "Faster answers on Radeon RX 9000 / AI PRO R9700" is ON by default; turning it off writes its entry.
 
 The Terminal shows the switches as rows of its Advanced table (hero_cli/launch/params.py), only where they apply: ``hero launch --set HERO_KVA=1``
 turns "Faster long prompts" on, ``--set HERO_KVA=off`` puts the default back (the same as removing the row).
@@ -26,7 +26,7 @@ class Switch:
     label: str                    # the words the app shows
     effect: str                   # one plain sentence: what it does and what the other choice does
     env: tuple[tuple[str, str], ...]   # the environment entries written when the switch is NOT in its default state
-    only: str                     # "qwen-gpu" | "qwen-cuda-12gb" | "qwen-radeon-9000" | "deepseek" | "qwen-any": where it applies
+    only: str                     # "qwen-gpu" | "qwen-cuda-12gb" | "qwen-radeon-9000" | "qwen-any": where it applies
     default: str = "on"           # "on" | "off": what a launch without the entries does
     legacy: tuple[tuple[str, str], ...] = ()    # entries an earlier 0.2.7 test build wrote for the same state: they read as the switch being set, and are removed with it
     terminal_only: bool = False   # shown in the Terminal's Advanced table only, never in the app
@@ -43,14 +43,6 @@ SWITCHES: tuple[Switch, ...] = (
            "Shares the work between the graphics card and the processor in a way that makes answers faster on these cards. "
            "Turn off to go back to the previous setting, which is slower.",
            (("HERO_PCIE_FRAC_DEFAULT", "old"),), "qwen-radeon-9000"),
-    Switch("deepseek_speedups", "DeepSeek speed-ups",
-           "Reads long prompts faster and loads the parts of the model it needs faster. "
-           "Turn off if DeepSeek stops working or its answers look wrong; it then runs as in version 0.2.6.",
-           # DS4_DEFAULTS=026: the engine's master switch back to the 0.2.6 defaults; the six are what older engines (and the test builds) read
-           (("DS4_DEFAULTS", "026"), ("DS4_FAST_ATTN", "0"), ("DS4_ATTN_SLAB", "0"), ("DS4_COPY_PIN", "0"), ("DS4_COPY_HUGETLB", "0"),
-            ("DS4_STORE_SPARE", "0"), ("DS4_STORE_PUT", "0")), "deepseek",
-           legacy=(("DS4_FAST_ATTN", "0"), ("DS4_ATTN_SLAB", "0"), ("DS4_COPY_PIN", "0"), ("DS4_COPY_HUGETLB", "0"),
-                   ("DS4_STORE_SPARE", "0"), ("DS4_STORE_PUT", "0"))),
     # Troubleshooting only, in the Terminal's Advanced table and nowhere else: every Qwen 0.2.7 default back to its 0.2.6 behaviour.
     Switch("qwen_defaults_026", "Qwen: 0.2.6 behaviour",
            "Starts every Qwen speed setting new in 0.2.7 the way 0.2.6 did, for troubleshooting. Use it if something that worked before no longer does.",
@@ -77,11 +69,6 @@ def _small_nvidia(gpus: Iterable[Mapping[str, Any]] | None) -> bool:
     return False
 
 
-def is_deepseek(cfg: Mapping[str, Any] | None) -> bool:
-    cfg = cfg or {}
-    return cfg.get("arch") == "deepseek41" or bool(re.search(r"hero-dsv41", str(cfg.get("exe") or ""), re.IGNORECASE))
-
-
 def _radeon_9000(gpus: Iterable[Mapping[str, Any]] | None) -> bool:
     for g in gpus or []:
         if g.get("vendor") not in (None, "", "amd"):
@@ -96,10 +83,6 @@ def applies(switch: Switch | str, cfg: Mapping[str, Any] | None, gpus: Iterable[
     """Does the switch make sense for this model on this PC? ``backend`` is the engine's (cuda, hip, sycl, metal, cpu); the run config's own wins.
     "Faster long prompts" is for Qwen3.8-Flash-Next models only (a config without an "arch")."""
     sw = BY_ID[switch] if isinstance(switch, str) else switch
-    if sw.only == "deepseek":
-        return is_deepseek(cfg)
-    if is_deepseek(cfg):
-        return False
     if sw.only == "qwen-any":
         return True
     backend = (cfg or {}).get("backend") or backend

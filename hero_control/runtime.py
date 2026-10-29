@@ -515,7 +515,7 @@ def _check_start_candidate(name: str, expected_profile_revision: str | None,
     return plan, digest
 
 
-MAX_START_WAIT = 1800     # seconds a start may wait for the model: a 250 GB DeepSeek set on a slow disk needs more than 10 minutes (#3949)
+MAX_START_WAIT = 1800     # seconds a start may wait for the model: a multi-shard model set on a slow disk needs more than 10 minutes (#3949)
 
 
 def start(name: str, *, wait: float = 300, shutdown_timeout: float = 30,
