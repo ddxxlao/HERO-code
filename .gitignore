@@ -1,0 +1,32 @@
+# Build output and local run files
+/build*/
+/build-*/
+/dist/
+/engine/
+/engine-*/
+/pack/
+/packs/
+/models/
+/mtp/
+/logs/
+/.venv/
+/.ccache/
+/.hero-mcp/
+/run-*.sh
+/run-*.bat
+/hero-*.json
+/hero-*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+*.done
+*.nsys-rep
+/third_party/llama.cpp
+/third_party/*.zip
+
+# IDEs
+.vscode/
+.idea/
+.cursor/
+node_modules/

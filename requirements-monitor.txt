@@ -1,0 +1,2 @@
+# Optional terminal monitor only. The core server and `hero status` use stdlib.
+textual==8.2.8

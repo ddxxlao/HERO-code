@@ -1,0 +1,11 @@
+# Launchers keep their platform line endings wherever the repository is cloned.
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# The license text is shipped and checked as LF text on every checkout.
+LICENSE text eol=lf
+
+# Vendored KaTeX (serve/web/vendor): the files are hashed byte for byte (PROVENANCE.json).
+serve/web/vendor/** -text
