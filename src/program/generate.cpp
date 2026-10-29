@@ -109,9 +109,6 @@
 #endif
 #include "hero/artifact/gguf_reader.hpp"
 #include "hero/core/family_layout.hpp"
-#if defined(HERO_HAVE_QWEN35)
-#include "hero/qwen35/engine.hpp"
-#endif
 #if defined(_WIN32)
 #include <windows.h>
 #include <psapi.h>
@@ -2876,11 +2873,7 @@ int main(int argc, char** argv) {
         }
         // `hero --families`: the GGUF architectures this build runs (setup asks before it installs one)
         if (std::strcmp(argv[i], "--families") == 0) {
-#if defined(HERO_HAVE_QWEN35)
-            std::printf("qwen4exp qwen35moe\n");
-#else
             std::printf("qwen4exp\n");
-#endif
             return 0;
         }
     }
@@ -2930,23 +2923,6 @@ int main(int argc, char** argv) {
 #endif
         break;
     }
-#if defined(HERO_HAVE_QWEN35)
-    // **THE FAMILY SWITCH.**  A Qwen3.6-35B-A3B file (GGUF architecture qwen35moe) runs on its own engine path
-    // (src/qwen35), decided here from the file's header before any of this engine's state exists; every other file
-    // goes on below exactly as before.  Only the architecture string is read (the header of --native's shard).
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (std::strcmp(argv[i], "--native") != 0 && std::strcmp(argv[i], "--model") != 0) continue;
-        bool qwen35 = false;
-        try {
-            const hero::GgufFile meta(hero::gguf_split_paths(argv[i + 1]).front());
-            qwen35 = hero::model_family(meta) == hero::ModelFamily::Qwen35Moe;
-        } catch (const std::exception&) {
-            // not readable here: the normal path below reports it
-        }
-        if (qwen35) return hero::qwen35::run(argc, argv);
-        break;
-    }
-#endif
 #if defined(HERO_USE_HIP) && !defined(HERO_HIP_GFX906)
     prime_hw_queues();
 #endif
@@ -3774,16 +3750,6 @@ int main(int argc, char** argv) {
             // every shard of the model (<name>-0000N-of-0000M.gguf beside --native).  A missing shard is an error
             // here: it used to be skipped, leaving a model with some tensors absent and a later error, or none.
             o.native_shards = hero::gguf_split_paths(o.native_preset);
-            // a model family HERO recognises but has no engine path for yet (Qwen3.6-35B-A3B) is refused here,
-            // with a message that says so, before anything else about the file is judged
-            {
-                const hero::GgufFile meta(o.native_shards.front());
-                const std::string why = hero::model_family_not_supported(hero::model_family(meta));
-                if (hero::model_family(meta) != hero::ModelFamily::Unknown && !why.empty()) {
-                    std::fprintf(stderr, "hero generate: --native %s: %s\n", o.native_preset.c_str(), why.c_str());
-                    return 2;
-                }
-            }
             // --ple-gguf defaults to the shard that holds the PLE table, found by name: shard 2 of the ISTA files
             // and of Unsloth's UD-Q4_K_XL, shard 1 of Swift's
             if (o.ple_gguf.empty() && !o.no_ple) {

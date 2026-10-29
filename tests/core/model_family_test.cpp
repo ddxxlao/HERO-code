@@ -1,11 +1,9 @@
-// tests/core/model_family_test.cpp - the model families (NEW-MODELS-PLAN.md T0) on synthetic GGUFs: no model, no GPU.
+// tests/core/model_family_test.cpp - the model family (qwen4exp) on synthetic GGUFs: no model, no GPU.
 //
-//   * the architecture guard accepts qwen4exp and qwen35moe and refuses anything else; the engine's guard refuses
-//     qwen35moe with "not ... yet" (no engine path for Qwen3.6 before T1);
-//   * geometry_from_gguf reads Qwen3.6-35B-A3B's real metadata values (hidden 2048, 40 + 1 MTP layers, 32 GDN V
-//     heads, conv 8192, no hyper-connections, no indexer) and Flash-Next's as exactly the compiled defaults;
-//   * the layout tables, on tiny files of either family: a complete file passes, a wrong shape, a missing tensor
-//     and (qwen35moe) a tensor the table does not name are refused, naming the tensor.
+//   * the architecture guard accepts qwen4exp and refuses anything else; the engine's guard runs qwen4exp;
+//   * geometry_from_gguf reads Flash-Next's metadata as exactly the compiled defaults;
+//   * the layout tables on tiny files of the family: a complete file passes, a wrong shape and a missing tensor
+//     are refused, naming the tensor.
 //
 // `model_family_test --real SHARD`: the same view of a real model (headers only): family, geometry, the kernels'
 // verdict and the layout check over every shard.
@@ -47,14 +45,12 @@ const uint32_t F32 = 0;
 
 struct Dims {
     uint64_t block_count, embd, heads, heads_kv, key_len, experts, used, ff, ff_sh, conv, state, groups, v_heads,
-        inner, interval, nextn, hc, hc_lr, idx_heads, idx_key;
+        inner, interval, hc, hc_lr, idx_heads, idx_key;
 };
-// Qwen3.6-35B-A3B (unsloth/Qwen3.6-35B-A3B-MTP-GGUF, every quant) and Qwen3.8-Flash-Next, as their files say
-const Dims kQwen36 = {41, 2048, 16, 2, 256, 256, 8, 512, 512, 4, 128, 16, 32, 4096, 4, 1, 0, 0, 0, 0};
-const Dims kFlashNext = {48, 2560, 24, 2, 256, 512, 10, 640, 640, 4, 128, 16, 48, 6144, 4, 0, 4, 320, 4, 128};
-// tiny models of each family for the layout checks (every tensor F32, a few KB)
-const Dims kTiny36 = {5, 64, 2, 1, 16, 4, 2, 32, 32, 4, 8, 2, 4, 32, 4, 1, 0, 0, 0, 0};
-const Dims kTinyFlash = {8, 64, 2, 1, 16, 4, 2, 32, 32, 4, 8, 2, 4, 32, 4, 0, 2, 8, 2, 8};
+// Qwen3.8-Flash-Next, as its files say
+const Dims kFlashNext = {48, 2560, 24, 2, 256, 512, 10, 640, 640, 4, 128, 16, 48, 6144, 4, 4, 320, 4, 128};
+// a tiny model for the layout checks (every tensor F32, a few KB)
+const Dims kTinyFlash = {8, 64, 2, 1, 16, 4, 2, 32, 32, 4, 8, 2, 4, 32, 4, 2, 8, 2, 8};
 
 std::vector<Kv> metadata(const char* arch, const Dims& d, uint64_t vocab) {
     const std::string p = std::string(arch) + ".";
@@ -74,15 +70,11 @@ std::vector<Kv> metadata(const char* arch, const Dims& d, uint64_t vocab) {
                           fixture::u32(p + "ssm.group_count", d.groups),
                           fixture::u32(p + "ssm.time_step_rank", d.v_heads),
                           fixture::u32(p + "ssm.inner_size", d.inner),
-                          fixture::u32(p + "full_attention_interval", d.interval)};
-    if (std::string(arch) == "qwen35moe") {
-        kv.push_back(fixture::u32(p + "nextn_predict_layers", d.nextn));
-    } else {
-        kv.push_back(fixture::u32(p + "hyper_connection.count", d.hc));
-        kv.push_back(fixture::u32(p + "hyper_connection.low_rank", d.hc_lr));
-        kv.push_back(fixture::u32(p + "attention.indexer.head_count", d.idx_heads));
-        kv.push_back(fixture::u32(p + "attention.indexer.key_length", d.idx_key));
-    }
+                          fixture::u32(p + "full_attention_interval", d.interval),
+                          fixture::u32(p + "hyper_connection.count", d.hc),
+                          fixture::u32(p + "hyper_connection.low_rank", d.hc_lr),
+                          fixture::u32(p + "attention.indexer.head_count", d.idx_heads),
+                          fixture::u32(p + "attention.indexer.key_length", d.idx_key)};
     std::vector<std::string> tokens;
     for (uint64_t i = 0; i < vocab; ++i) tokens.push_back("t" + std::to_string(i));
     kv.push_back(fixture::str_array("tokenizer.ggml.tokens", tokens));
@@ -113,32 +105,27 @@ std::string layout_error(const fs::path& dir, const char* arch, const Dims& d, u
     const fs::path meta = dir / "meta.gguf";
     fixture::write(meta, metadata(arch, d, vocab), {});
     hero::core::ModelGeometry g;
-    int64_t k = 0;
     std::string err;
-    if (std::string(arch) == "qwen35moe") {
-        if (!geometry_of(meta, g, k, err)) return "geometry: " + err;
-    } else {
-        // the qwen4exp guard pins Flash-Next's own block count and widths, so the tiny model's geometry is set here
-        g.n_layers = (int64_t) d.block_count;
-        g.n_embd = (int64_t) d.embd;
-        g.n_head = (int64_t) d.heads;
-        g.n_head_kv = (int64_t) d.heads_kv;
-        g.head_dim = (int64_t) d.key_len;
-        g.n_expert = (int64_t) d.experts;
-        g.n_ff = (int64_t) d.ff;
-        g.n_ff_shexp = (int64_t) d.ff_sh;
-        g.ssm_d_conv = (int64_t) d.conv;
-        g.ssm_state_size = (int64_t) d.state;
-        g.ssm_k_heads = (int64_t) d.groups;
-        g.ssm_v_heads = (int64_t) d.v_heads;
-        g.ssm_value_dim = (int64_t) d.inner;
-        g.ssm_conv_channels = 2 * g.ssm_state_size * g.ssm_k_heads + g.ssm_value_dim;
-        g.hc = (int64_t) d.hc;
-        g.hc_lr = (int64_t) d.hc_lr;
-        g.idx_q_heads = (int64_t) d.idx_heads;
-        g.idx_key_dim = (int64_t) d.idx_key;
-        g.n_vocab = (int64_t) vocab;
-    }
+    // the qwen4exp guard pins Flash-Next's own block count and widths, so the tiny model's geometry is set here
+    g.n_layers = (int64_t) d.block_count;
+    g.n_embd = (int64_t) d.embd;
+    g.n_head = (int64_t) d.heads;
+    g.n_head_kv = (int64_t) d.heads_kv;
+    g.head_dim = (int64_t) d.key_len;
+    g.n_expert = (int64_t) d.experts;
+    g.n_ff = (int64_t) d.ff;
+    g.n_ff_shexp = (int64_t) d.ff_sh;
+    g.ssm_d_conv = (int64_t) d.conv;
+    g.ssm_state_size = (int64_t) d.state;
+    g.ssm_k_heads = (int64_t) d.groups;
+    g.ssm_v_heads = (int64_t) d.v_heads;
+    g.ssm_value_dim = (int64_t) d.inner;
+    g.ssm_conv_channels = 2 * g.ssm_state_size * g.ssm_k_heads + g.ssm_value_dim;
+    g.hc = (int64_t) d.hc;
+    g.hc_lr = (int64_t) d.hc_lr;
+    g.idx_q_heads = (int64_t) d.idx_heads;
+    g.idx_key_dim = (int64_t) d.idx_key;
+    g.n_vocab = (int64_t) vocab;
     std::vector<Tensor> ts = tensors_of(g);
     if (mutate) mutate(ts);
     const fs::path model = dir / (std::string(arch) + "-tiny.gguf");
@@ -193,99 +180,58 @@ int main(int argc, char** argv) {
     TempDir d;
     {
         // the guards
-        const fs::path q36 = d.path / "q36.gguf", fn = d.path / "fn.gguf", other = d.path / "other.gguf";
-        fixture::write(q36, metadata("qwen35moe", kQwen36, 8), {});
+        const fs::path fn = d.path / "fn.gguf", other = d.path / "other.gguf";
         fixture::write(fn, metadata("qwen4exp", kFlashNext, 8), {});
         fixture::write(other, {fixture::str("general.architecture", "llama")}, {});
-        const hero::GgufFile a(q36.string()), b(fn.string()), c(other.string());
-        check(hero::model_family(a) == hero::ModelFamily::Qwen35Moe &&
-                  hero::model_family(b) == hero::ModelFamily::Qwen4Exp &&
+        const hero::GgufFile b(fn.string()), c(other.string());
+        check(hero::model_family(b) == hero::ModelFamily::Qwen4Exp &&
                   hero::model_family(c) == hero::ModelFamily::Unknown,
-              "model_family: qwen35moe, qwen4exp, unknown");
-        check(hero::check_architecture(a).empty(), "the architecture guard accepts qwen35moe");
+              "model_family: qwen4exp, unknown");
         check(hero::check_architecture(b).empty(), "the architecture guard accepts qwen4exp");
         check(hero::check_architecture(c).find("'llama'") != std::string::npos, "and refuses llama, naming it");
-        const std::string e = hero::check_engine_architecture(a);
-        check(e.find("Qwen3.6-35B-A3B") != std::string::npos && e.find("does not run it yet") != std::string::npos,
-              "the engine guard refuses Qwen3.6: recognised, not supported yet");
         check(hero::check_engine_architecture(b).empty(), "the engine guard runs qwen4exp");
-        std::vector<Kv> kv = metadata("qwen35moe", kQwen36, 8);
-        for (auto it = kv.begin(); it != kv.end(); ++it)
-            if (it->key == "qwen35moe.ssm.time_step_rank") { kv.erase(it); break; }
-        const fs::path miss = d.path / "miss.gguf";
-        fixture::write(miss, kv, {});
-        check(hero::check_architecture(hero::GgufFile(miss.string())).find("ssm.time_step_rank") != std::string::npos,
-              "a qwen35moe file without ssm.time_step_rank is refused, naming the key");
     }
     {
-        // the geometry of the real models, from their metadata values
-        const fs::path q36 = d.path / "q36g.gguf", fn = d.path / "fng.gguf";
-        fixture::write(q36, metadata("qwen35moe", kQwen36, 248320), {});
+        // the geometry of the real model, from its metadata values
+        const fs::path fn = d.path / "fng.gguf";
         fixture::write(fn, metadata("qwen4exp", kFlashNext, 248320), {});
-        hero::core::ModelGeometry g;
+        hero::core::ModelGeometry f;
         int64_t k = 0;
         std::string err;
-        const bool ok = geometry_of(q36, g, k, err);
-        check(ok, "Qwen3.6 geometry reads" + (ok ? std::string() : ": " + err));
-        check(g.family == hero::ModelFamily::Qwen35Moe && g.n_layers == 40 && g.n_mtp_layers == 1 && g.n_embd == 2048,
-              "Qwen3.6: 40 trunk layers + 1 MTP block, hidden 2048");
-        check(g.n_qsa_layers() == 10 && g.n_gdn_layers() == 30 && hero::core::layer_kind(g, 3) ==
-                  hero::core::LayerKind::Attention && hero::core::layer_kind(g, 40) == hero::core::LayerKind::Mtp,
-              "Qwen3.6: 10 attention / 30 GDN layers, layer 40 is the MTP block");
-        check(g.ssm_k_heads == 16 && g.ssm_v_heads == 32 && g.ssm_conv_channels == 8192 && g.ssm_value_dim == 4096,
-              "Qwen3.6 GDN: 16 K groups, 32 V heads, conv 8192, inner 4096");
-        check(g.n_head == 16 && g.n_head_kv == 2 && g.head_dim == 256 && !g.has_indexer() && !g.has_hyper_connections(),
-              "Qwen3.6 attention: 16 Q / 2 KV x 256, no indexer, no hyper-connections");
-        check(g.n_expert == 256 && k == 8 && g.n_ff == 512 && g.n_ff_shexp == 512 && g.n_vocab == 248320,
-              "Qwen3.6 MoE: 256 experts top-8, FF 512, shared 512; vocab 248320");
-        check(!hero::core::compiled_geometry_mismatch(g).empty(), "Qwen3.6 does not match the compiled kernels");
-        hero::core::ModelGeometry f;
         const bool okf = geometry_of(fn, f, k, err);
         const hero::core::ModelGeometry c;
         check(okf && hero::core::compiled_geometry_mismatch(f).empty() && k == 10 && f.n_expert == c.n_expert &&
                   f.ssm_conv_channels == c.ssm_conv_channels && f.n_vocab == c.n_vocab && f.hc_dim() == c.hc_dim(),
-              "Flash-Next's metadata gives exactly the compiled geometry");
+              "Flash-Next's metadata gives exactly the compiled geometry" + (okf ? std::string() : ": " + err));
         Dims coder = kFlashNext;
         coder.experts = 256;
         const fs::path cp = d.path / "coder.gguf";
         fixture::write(cp, metadata("qwen4exp", coder, 8), {});
         check(geometry_of(cp, f, k, err) && f.n_expert == 256 && hero::core::compiled_geometry_mismatch(f).empty(),
               "the Coder's 256 experts are a run-time size, not a kernel mismatch");
-        Dims wrong = kQwen36;
+        Dims wrong = kFlashNext;
         wrong.inner = 4000;
         const fs::path wp = d.path / "wrong.gguf";
-        fixture::write(wp, metadata("qwen35moe", wrong, 8), {});
+        fixture::write(wp, metadata("qwen4exp", wrong, 8), {});
         check(!geometry_of(wp, f, k, err) && err.find("ssm.inner_size") != std::string::npos,
               "an inconsistent ssm.inner_size is refused");
     }
     {
         // the layout tables
-        check(layout_error(d.path, "qwen35moe", kTiny36, 16, nullptr).empty(),
-              "a complete qwen35moe file passes its layout (incl. the nextn MTP block)");
         const std::string ef = layout_error(d.path, "qwen4exp", kTinyFlash, 16, nullptr);
         check(ef.empty(), "a complete qwen4exp file passes its layout (hyper-connections, indexer)" +
                               (ef.empty() ? std::string() : ": " + ef));
-        std::string e = layout_error(d.path, "qwen35moe", kTiny36, 16, [](std::vector<Tensor>& ts) {
+        std::string e = layout_error(d.path, "qwen4exp", kTinyFlash, 16, [](std::vector<Tensor>& ts) {
             for (auto& t : ts)
                 if (t.name == "blk.1.ssm_conv1d.weight") t.shape[1] += 1;
         });
         check(e.find("blk.1.ssm_conv1d.weight") != std::string::npos && e.find("wants") != std::string::npos,
               "a wrong shape is refused, naming the tensor and both shapes");
-        e = layout_error(d.path, "qwen35moe", kTiny36, 16, [](std::vector<Tensor>& ts) {
-            for (auto it = ts.begin(); it != ts.end(); ++it)
-                if (it->name == "blk.4.nextn.eh_proj.weight") { ts.erase(it); break; }
-        });
-        check(e == "missing blk.4.nextn.eh_proj.weight", "a missing MTP tensor is refused");
-        e = layout_error(d.path, "qwen35moe", kTiny36, 16, [](std::vector<Tensor>& ts) {
-            ts.push_back({"blk.0.hc_attn_norm.weight", {64}, F32, 99});
-        });
-        check(e.find("blk.0.hc_attn_norm.weight") != std::string::npos && e.find("not in the") != std::string::npos,
-              "a tensor the qwen35moe table does not name is refused");
         e = layout_error(d.path, "qwen4exp", kTinyFlash, 16, [](std::vector<Tensor>& ts) {
             for (auto it = ts.begin(); it != ts.end(); ++it)
                 if (it->name == "blk.3.indexer.k_proj.weight") { ts.erase(it); break; }
         });
-        check(e == "missing blk.3.indexer.k_proj.weight", "Flash-Next: a missing indexer tensor is refused (" + e + ")");
+        check(e == "missing blk.3.indexer.k_proj.weight", "a missing indexer tensor is refused (" + e + ")");
     }
     std::printf(g_fail ? "FAILED (%d)\n" : "ALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;
