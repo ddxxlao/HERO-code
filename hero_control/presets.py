@@ -113,7 +113,6 @@ def choices_from_config(cfg: dict[str, Any], *, use: str = "chat") -> dict[str, 
         "goal": "room" if room else "speed",
         "reserve_mib": int(reserve) if isinstance(reserve, (int, float)) else 0,
         "use": use,
-        "family": "qwen36" if (val("--mtp") or "").isdigit() else "flash-next",
     }
 
 
@@ -271,8 +270,7 @@ def create(result: dict[str, Any], *, choices: dict[str, Any], identity: dict[st
     settings = result.get("settings") or {"args": {}, "env": {}, "per_request": {}}
     # (a value only outside the tuner's tested range is kept, #3844; the never list still refuses)
     problems, _outside = tune_knobs.check_setting_parts(settings.get("args") or {}, settings.get("env") or {},
-                                                        tune_knobs.Context(context_tokens=choices.get("context") or 32768,
-                                                                           family=choices.get("family") or "flash-next"))
+                                                        tune_knobs.Context(context_tokens=choices.get("context") or 32768))
     if problems:
         raise PresetError("these settings are outside the safe rules and cannot be saved: " + "; ".join(problems))
     base = result.get("base") or {}
@@ -465,7 +463,7 @@ def overlay(cfg: dict[str, Any], *, now: dict[str, Any] | None = None, use: str 
             info["why_not"] = "not applied: " + "; ".join(stale["reasons"])
             return cfg, info
         s = preset.get("settings") or {}
-        ctx = tune_knobs.Context(context_tokens=choices.get("context") or 32768, family=choices.get("family") or "flash-next")
+        ctx = tune_knobs.Context(context_tokens=choices.get("context") or 32768)
         problems, outside = tune_knobs.check_setting_parts(s.get("args") or {}, s.get("env") or {}, ctx)
         if problems:
             info["why_not"] = "not applied: " + "; ".join(problems)

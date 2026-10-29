@@ -818,15 +818,6 @@ def split_args(argv: list[str]) -> list[str]:
     return [str(a) for a in argv]
 
 
-def detect_family(args: list[str]) -> str:
-    for i, a in enumerate(args):
-        if a == "--mtp" and i + 1 < len(args):
-            return "qwen36" if str(args[i + 1]).isdigit() else "flash-next"
-    if "--pack" in args or "--native" in args:
-        return "flash-next"
-    return "flash-next"
-
-
 def model_gib_of(args: list[str]) -> float:
     """Total size of the model files a configuration names, shards included."""
     from pathlib import Path
@@ -848,8 +839,7 @@ def model_gib_of(args: list[str]) -> float:
 
 
 def context_from_config(cfg: dict[str, Any], *, engine_backend: str | None, opts: Options,
-                        engine_flags: list[str] | None = None, system: dict[str, Any] | None = None,
-                        family: str | None = None) -> tune_knobs.Context:
+                        engine_flags: list[str] | None = None, system: dict[str, Any] | None = None) -> tune_knobs.Context:
     args = split_args(cfg.get("args") or [])
     system = system or {"memory": tune_machine.memory(), "gpus": tune_machine.gpus(), "cpu": tune_machine.cpu()}
     gpu_cfg = cfg.get("gpu")
@@ -872,7 +862,7 @@ def context_from_config(cfg: dict[str, Any], *, engine_backend: str | None, opts
         except Exception:  # noqa: BLE001
             arch = None
     return tune_knobs.Context(
-        backend=backend, family=family or detect_family(args), gpu_count=max(1, len(used)),
+        backend=backend, gpu_count=max(1, len(used)),
         vram_mib=min((g["vram_total_mib"] for g in used if g.get("vram_total_mib")), default=0),
         ram_gib=int((mem.get("total_mib") or 0) // 1024), model_gib=model_gib_of(args),
         hybrid_cpu=bool(cpu.get("hybrid")), logical_threads=int(cpu.get("logical") or 0), arch=arch,

@@ -74,10 +74,9 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
 
 let tab = "chat";
 function showTab(name) {
-  tab = ["chat", "images", "monitor", "about"].includes(name) ? name : "chat";
+  tab = ["chat", "monitor", "about"].includes(name) ? name : "chat";
   for (const b of document.querySelectorAll(".st-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
-  for (const v of ["chat", "images", "monitor", "about"]) $(`view-${v}`).hidden = v !== tab;
-  if (tab === "images") $("img-prompt").focus();
+  for (const v of ["chat", "monitor", "about"]) $(`view-${v}`).hidden = v !== tab;
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", tab === "chat" ? location.pathname : `#${tab}`);
   if (tab === "chat") $("input").focus();
   if (tab === "monitor") loadMcp();
@@ -118,8 +117,6 @@ async function loadHealth() {
   try {
     health = await (await fetch("health")).json();
     renderEmptyChat();
-    $("tab-btn-images").hidden = !health.image_generation;
-    if (location.hash === "#images" && health.image_generation) showTab("images");
   } catch (e) {
     setTimeout(loadHealth, 2000);
   }
@@ -222,19 +219,10 @@ function fitHeader() {
 window.addEventListener("resize", fitHeader);
 
 // ------------------------------------------------------------------ Load / Unload (POST /load, /unload: the header button)
-// Metrics stay "unloaded" until the engine is READY, so a turn or an image job on this page has to paint Loading itself.
+// Metrics stay "unloaded" until the engine is READY, so a turn on this page has to paint Loading itself.
 // modelOp covers the button's own POST, which returns before the next poll can agree.
 let modelOp = null;
-let imageBusy = false;
-function pageBusy() { return busy != null || imageBusy; }
-// "generating an image" is the job a refresh can see. imageBusy is this page's POST before that phase is published. A chat
-// phase already on the metrics wins, because Stop still stops that reply.
-function imageLive(live) {
-  if (live && live.phase === "generating an image") return true;
-  const state = live && live.state;
-  if (state === "reading" || state === "generating") return false;
-  return imageBusy;
-}
+function pageBusy() { return busy != null; }
 function paintLive() { if (lastMetrics) render(lastMetrics); }
 function turnBlocksUnload(live) {
   const state = (live && live.state) || "";
@@ -250,14 +238,11 @@ function modelButton(live) {
   if (modelOp === "unload") return setModelButton(tr("model.unloading", "Unloading…"), tr("model.unloadingTitle", "The model is unloading"), true);
   const state = (live && live.state) || "";
   const metricsBusy = state === "reading" || state === "generating" || (live && live.queued > 0);
-  const imageNow = imageLive(live);
   const unload = tr("model.unload", "Unload");
   if (state === "unloaded") {
-    if (imageNow) return setModelButton(tr("model.loading", "Loading…"), tr("model.imageLoading", "An image is already loading the model"), true);
     if (pageBusy()) return setModelButton(tr("model.loading", "Loading…"), tr("model.replyLoading", "A reply is already loading the model"), true);
     return setModelButton(tr("model.load", "Load"), tr("model.loadTitle", "Load the model now. A message also loads it."), false);
   }
-  if (imageNow) return setModelButton(unload, tr("model.imageBusy", "An image is generating. It finishes on its own."), true);
   if (!state) return setModelButton("…", tr("model.waiting", "Waiting for the server"), true);
   if (metricsBusy || pageBusy()) return setModelButton(unload, tr("model.stopFirst", "Stop the reply, then unload"), true);
   return setModelButton(unload, tr("model.unloadTitle", "Unload the model and free the GPU"), false);
@@ -266,11 +251,11 @@ $("unload-btn").onclick = async () => {
   if (modelOp) return;
   const live = (lastMetrics && lastMetrics.live) || {};
   const loading = live.state === "unloaded";
-  const busyCopy = (sample, stillLoading) => stillLoading
-    ? (imageLive(sample) ? tr("model.imageLoadingDot", "An image is already loading the model.") : tr("model.replyLoadingDot", "A reply is already loading the model."))
-    : (imageLive(sample) ? tr("model.imageBusy", "An image is generating. It finishes on its own.") : tr("model.stopFirstDot", "Stop the reply, then unload."));
+  const busyCopy = (stillLoading) => stillLoading
+    ? tr("model.replyLoadingDot", "A reply is already loading the model.")
+    : tr("model.stopFirstDot", "Stop the reply, then unload.");
   if (loading ? pageBusy() : turnBlocksUnload(live)) {
-    toast("warn", tr("model.busy", "Model is busy"), busyCopy(live, loading));
+    toast("warn", tr("model.busy", "Model is busy"), busyCopy(loading));
     return;
   }
   if (!loading && !confirm(tr("model.confirmUnload", "Unload the model and free the GPU? Load, or the next message, brings it back."))) return;
@@ -285,7 +270,7 @@ $("unload-btn").onclick = async () => {
   if (loadingNow ? pageBusy() : turnBlocksUnload(now)) {
     modelOp = null;
     if (lastMetrics) render(lastMetrics); else modelButton(now);
-    toast("warn", tr("model.busy", "Model is busy"), busyCopy(now, loadingNow));
+    toast("warn", tr("model.busy", "Model is busy"), busyCopy(loadingNow));
     return;
   }
   modelOp = loadingNow ? "load" : "unload";
@@ -317,16 +302,14 @@ $("unload-btn").onclick = async () => {
             status === "unloaded" ? tr("model.unloaded", "Model unloaded") : tr("model.alreadyUnloaded", "Already unloaded"),
             tr("model.gpuFree", "The GPU is free. Load, or the next message, brings it back."));
     } else if (r.status === 409 || status === "busy") {
-      let sample = (lastMetrics && lastMetrics.live) || {};
       try {
         const mr = await fetch("metrics", {headers: headers()});
         if (mr.ok) {
           const m = await mr.json();
-          if (m && m.live) { sample = m.live; lastMetrics = m; }
+          if (m && m.live) lastMetrics = m;
         }
       } catch (e) { /* the 409 body has no phase */ }
-      toast("warn", tr("model.busy", "Model is busy"), imageLive(sample)
-        ? tr("model.imageBusy", "An image is generating. It finishes on its own.") : tr("model.stopFirstDot", "Stop the reply, then unload."));
+      toast("warn", tr("model.busy", "Model is busy"), tr("model.stopFirstDot", "Stop the reply, then unload."));
     } else if (status === "unsupported") {
       toast("error", tr("model.unsupported", "Unload is not available"), "");
     } else {
@@ -344,16 +327,14 @@ function render(m) {
   const live = m.live || {}, hw = m.hardware || {}, st = m.hardware_static || {}, eng = m.engine || {}, h = m.history || {};
   const last = (m.requests || [])[0];
   // the header pill. modelOp and a local load win over "N queued": with parallel requests, queued stays up through
-  // ensure_loaded(), and metrics stay "unloaded" until the engine is READY. An image POST in that window is still a load.
-  const localLoad = live.state === "unloaded" && (busy != null || imageBusy);
+  // ensure_loaded(), and metrics stay "unloaded" until the engine is READY.
+  const localLoad = live.state === "unloaded" && busy != null;
   if (modelOp === "load") {
     setPill("idle", tr("model.loading", "Loading…"));
   } else if (modelOp === "unload") {
     setPill("idle", tr("model.unloading", "Unloading…"));
   } else if (localLoad) {
     setPill("idle", tr("model.loading", "Loading…"));
-  } else if (imageLive(live)) {
-    setPill("reading", tr("pill.image", "Generating image…"));
   } else if (live.state === "reading") {
     const pct = live.prompt_total ? Math.round((100 * live.prompt_read) / live.prompt_total) : null;
     setPill("reading", pct != null ? tr("pill.readingPct", "Reading prompt · {pct}%", {pct}) : tr("pill.reading", "Reading prompt"));
@@ -416,8 +397,7 @@ function renderTotals(t) {
 function renderMonitor(live, hw, st, eng, h, last, requests, totals, kept) {
   // model state
   // A local turn keeps metrics on "unloaded" for the whole engine start.
-  const imageNow = imageLive(live);
-  const starting = modelOp === "load" || imageNow || (busy != null && live.state === "unloaded");
+  const starting = modelOp === "load" || (busy != null && live.state === "unloaded");
   const on = !modelOp && live.queued > 0 ? "queued" : live.state;
   for (const b of document.querySelectorAll("#state-badges .st-badge")) {
     const lit = (b.dataset.s === on || b.dataset.s === live.state) && !(starting && b.dataset.s === "unloaded");
@@ -425,14 +405,10 @@ function renderMonitor(live, hw, st, eng, h, last, requests, totals, kept) {
   }
   const prog = $("state-progress");
   let label = "Waiting for a request", detail = "", pct = 0;
-  if (modelOp === "load" || (busy != null && live.state === "unloaded" && !imageNow)) {
+  if (modelOp === "load" || (busy != null && live.state === "unloaded")) {
     label = "Loading";
     delete prog.dataset.tone;
     detail = "The model is loading.";
-  } else if (imageNow && (live.state === "unloaded" || live.state === "reading" || live.state === "generating" || live.state === "idle")) {
-    label = live.state === "unloaded" ? "Loading" : "Generating image";
-    delete prog.dataset.tone;
-    detail = live.state === "unloaded" ? "The model is loading." : "An image is generating. It finishes on its own.";
   } else if (modelOp === "unload") {
     label = "Unloading";
     delete prog.dataset.tone;
@@ -1577,40 +1553,3 @@ async function start() {
   requestAnimationFrame(fitHeader);
 }
 start();
-
-// ------------------------------------------------------------------ images (POST /v1/images/generations)
-$("img-form").onsubmit = async (ev) => {
-  ev.preventDefault();
-  const prompt = $("img-prompt").value.trim();
-  if (!prompt) return;
-  const body = {prompt, size: $("img-size").value, response_format: "b64_json"};
-  if ($("img-seed").value !== "") body.seed = Number($("img-seed").value);
-  imageBusy = true;
-  $("img-go").disabled = true;
-  paintLive();
-  const t0 = performance.now();
-  $("img-hint").textContent = "Generating\u2026 (a minute or more on a small GPU)";
-  try {
-    const r = await fetch("v1/images/generations", {method: "POST", headers: headers(true), body: JSON.stringify(body)});
-    const j = await r.json();
-    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
-    for (const d of j.data) {
-      const fig = document.createElement("figure");
-      const img = document.createElement("img");
-      img.src = "data:image/png;base64," + d.b64_json;
-      img.alt = prompt;
-      const cap = document.createElement("figcaption");
-      cap.textContent = `${j.size}, seed ${d.seed}, ${((performance.now() - t0) / 1000).toFixed(0)} s: ${prompt}`;
-      fig.append(img, cap);
-      $("img-results").prepend(fig);
-    }
-    $("img-hint").textContent = "Done. Right-click an image to save it.";
-  } catch (e) {
-    $("img-hint").textContent = "";
-    toast("error", "No image", String(e.message || e), 8000);
-  } finally {
-    imageBusy = false;
-    $("img-go").disabled = false;
-    paintLive();
-  }
-};

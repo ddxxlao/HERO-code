@@ -11,7 +11,7 @@ case "${1:-test}" in
 lib)
     $CXX $OPT -fPIC -shared $INC tools/trellis/tqenc.cpp -o "$OUT/libtqenc.so" ;;
 hip)
-    # needs the ROCm of /data/dsv41/rv: export ROCM_PATH=/data/dsv41/rv/lib/python3.14/site-packages/_rocm_sdk_devel PATH=/data/dsv41/rv/bin:$PATH
+    # needs the ROCm of /data/trellis/rv: export ROCM_PATH=/data/trellis/rv/lib/python3.14/site-packages/_rocm_sdk_devel PATH=/data/trellis/rv/bin:$PATH
     # the host part of the encoder (tqenc.cpp) is built by g++: under hipcc ggml-common-tq.h's table becomes a __device__ variable
     g++ $OPT -fPIC $INC -c tools/trellis/tqenc.cpp -o "$OUT/tqenc_host.o"
     HF="-O3 --offload-arch=gfx1201 -mcumode -std=c++17 -mavx2 -mfma -mf16c"

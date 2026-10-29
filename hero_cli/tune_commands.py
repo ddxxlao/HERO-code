@@ -219,7 +219,7 @@ def auto(a: argparse.Namespace) -> int:
                             boot_timeout_s=a.boot_timeout, lock=_lock_factory(a, say), log=say)
     base_args = [str(x) for x in cfg.get("args") or []]
     # the wish becomes part of the base: leave-room asks the engine for the reserve if the configuration has none yet
-    if goal == "room" and reserve and "--vram-reserve-mib" not in base_args and ctx.family == "flash-next" \
+    if goal == "room" and reserve and "--vram-reserve-mib" not in base_args \
             and backend in ("cuda", "hip") and (flags is None or "--vram-reserve-mib" in flags):
         base_args += ["--vram-reserve-mib", str(reserve)]
         ctx.base_args = list(base_args)

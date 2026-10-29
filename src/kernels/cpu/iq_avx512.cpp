@@ -350,7 +350,7 @@ template <> struct FmtX<18> : Fmt<18> {
     }
 };
 
-// ---- the DeepSeek CPU lane's exact rows (iq512x_rows): the same 64-value decode, but summed as ggml's AVX2 dots sum, so a
+// ---- the exact-order rows (iq512x_rows): the same 64-value decode, but summed as ggml's AVX2 dots sum, so a
 // token's row is ggml-cpu's vec_dot bit for bit at any number of tokens: the integer sums of a block fold to ggml's eight lanes
 // (low half = the even 32-value chunk, high half = the odd one), the block scale is f16(d) * y.d, eight float lanes accumulate
 // across blocks, and K * ggml's hsum comes last.  vpdpwssd is the madd and the add in one.

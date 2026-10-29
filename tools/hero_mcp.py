@@ -116,7 +116,6 @@ FALLBACK_FAMILIES = {
                                                               "~80 GB of RAM to keep every expert in RAM",
               "tag": "nvfp4-"},
 }
-OWN_PATH_ENGINE = (0, 1, 45)   # the first engine that runs Qwen3.6-35B-A3B with pictures and parallel requests (setup.py MIN_ENGINE note)
 MEMORY_TIERS = ((62.0, "qwen", "IQ3_S"), (46.0, "qwen", "IQ3_XXS"), (38.0, "swift", "IQ2_XS"))   # as setup.py's: RAM + VRAM floors of the owner's 64 / 48 / 40 GB tiers
 # #3425 (owner's rule, same as setup.py's TIER_SYSTEM_RESERVE_GB): the floors count RAM + VRAM less the 5 GB Windows and the system keep
 TIER_SYSTEM_RESERVE_GB = 5.0
@@ -534,45 +533,11 @@ class HERO:
     def tables(self):
         s = self.setup_module()
         if s is not None:
-            return s.MODELS, {**s.FAMILIES, **self.own_families()}, list(s.CONTEXTS), "setup.py"
+            return s.MODELS, s.FAMILIES, list(s.CONTEXTS), "setup.py"
         return FALLBACK_MODELS, FALLBACK_FAMILIES, FALLBACK_CONTEXTS, "built-in table (setup.py not importable)"
-
-    def own_families(self) -> dict:
-        """setup.py's OWN_PATH_FAMILIES (Qwen3.6-35B-A3B): families with an engine path of their own.  They are not in FAMILIES
-        (whose entries are Flash-Next files with packs), so the model list used to leave them out and the app's Qwen3.6 page
-        showed no versions at all.  Each is returned as a family entry (title, about, tag, license) of this server's table."""
-        s = self.setup_module()
-        out = {}
-        for f, d in (getattr(s, "OWN_PATH_FAMILIES", None) or {}).items():
-            out[f] = {"title": d["title"], "about": d.get("about"), "tag": d["tag"], "license": d.get("license"),
-                      "vision": bool(d.get("vision", True)), "own_path": True}
-        return out
-
-    def own_size_names(self) -> list:
-        """The size names of the families that have an engine path of their own (Qwen3.6): the install tool accepts them as `model`."""
-        s = self.setup_module()
-        names = []
-        for fam in (getattr(s, "OWN_PATH_FAMILIES", None) or {}).values():
-            names.extend(n for n in fam.get("models", {}) if n not in names)
-        return names
-
-    def own_size(self, family, model) -> dict | None:
-        """One size of an own-path family as a model-table row for install_plan / model_table (None: not an own-path size).
-        The download is the GGUF; the picture reader (mmproj, ~0.9 GB) is counted by the plan when pictures are on."""
-        d = (getattr(self.setup_module(), "OWN_PATH_FAMILIES", None) or {}).get(family)
-        if not d or model not in d["models"]:
-            return None
-        size_gb = d["sha256"][d["file"].format(q=model)][0] / 1e9
-        return {"about": d["models"][model]["about"], "download_gb": round(size_gb, 1), "ram_gb": d["models"][model]["ram_gb"],
-                # the routed experts are ~93% of the file (setup.own_path_parallel_fits_all); the dense part and buffers ~1 GB more
-                "arena_gb": round(size_gb * 0.93, 1), "vision": bool(d.get("vision", True)),
-                "engine": OWN_PATH_ENGINE, "families": (family,)}
 
     def sizes_of(self, models, family) -> list:
         """The family's sizes as setup lists them: an experimental one last (never the default)."""
-        own = (getattr(self.setup_module(), "OWN_PATH_FAMILIES", None) or {}).get(family)
-        if own:
-            return list(own["models"])
         return sorted((m for m in models if family in models[m].get("families", ("qwen", "swift"))),
                       key=lambda m: bool(models[m].get("experimental")))
 
@@ -1238,17 +1203,14 @@ class HERO:
         for f, fd in families.items():
             sizes = []
             for m in self.sizes_of(models, f):
-                own = self.own_size(f, m)
-                d = own or models[m]
+                d = models[m]
                 tag = (fd.get("tag", "") + m).lower()
                 verdict = None
                 if ram is not None:
                     have_gb = ram + vram if d.get("mem_total") else ram     # Gyro: VRAM and RAM together
                     verdict = "fits" if have_gb >= d["ram_gb"] else "tight" if have_gb >= d["ram_gb"] - 8 else "does not fit"
                     try:
-                        if own:                         # its own engine path: no budget or low-RAM mode of Flash-Next's to judge by
-                            pass
-                        elif d.get("budget") and S and hasattr(S, "unsloth_budget") and not S.unsloth_budget(m, ram):
+                        if d.get("budget") and S and hasattr(S, "unsloth_budget") and not S.unsloth_budget(m, ram):
                             verdict = ("experimental: " if d.get("experimental") else "") + "fits (all of its experts in RAM)"
                         elif d.get("budget"):
                             verdict = (("experimental: " if d.get("experimental") else "")
@@ -1277,7 +1239,7 @@ class HERO:
                               "on_this_pc": verdict, "installed": tag in have, "id": tag,
                               # which graphics cards to use for it (hero_control/gpu_fit.py, the one rule app / Terminal / setup share):
                               # only with two or more cards that count; "recommended" names the pre-selected option
-                              "gpu_options": None if own else self.gpu_options(d, ram, hw)})   # Qwen3.6 runs on one card so far
+                              "gpu_options": self.gpu_options(d, ram, hw)})
             out.append({"family": f, "title": fd["title"], "about": fd.get("about"),
                         "experimental": bool(fd.get("experimental")),
                         "images": any(x["images"] for x in sizes) if sizes else fd.get("vision", True) is not False,
@@ -1435,14 +1397,6 @@ def expected_files(S, family: str, model: str, models_dir: Path, vision: bool) -
     Empty when the setup module cannot say (the caller then falls back to the folder scan)."""
     out = []
     try:
-        own = (getattr(S, "OWN_PATH_FAMILIES", None) or {}).get(family)
-        if own:                                         # Qwen3.6: the GGUF and the picture reader in the model's folder
-            folder = Path(models_dir) / (own["tag"] + model)
-            name = own["file"].format(q=model)
-            out.append({"path": str(folder / name), "bytes": own["sha256"][name][0], "role": "model"})
-            if vision:
-                out.append({"path": str(folder / own["mmproj"]), "bytes": own["sha256"][own["mmproj"]][0], "role": "vision"})
-            return out
         fam, d = S.FAMILIES[family], S.MODELS[model]
         if d.get("repo"):                               # NVFP4: a ready-made pack, many files with pinned sizes
             for f in S.ready_needed(model, Path(models_dir)):
@@ -1876,7 +1830,7 @@ class Tools:
 
     def defs(self) -> list:
         models, families, contexts = self.s.tables()[:3]
-        return tool_defs({**{name: {} for name in self.s.own_size_names() if name not in models}, **models}, families, contexts)
+        return tool_defs(models, families, contexts)
 
     def call(self, name: str, args) -> dict:
         defs = {d["name"]: d for d in self.defs()}
@@ -2100,7 +2054,7 @@ class Tools:
         sizes = s.sizes_of(models, family)
         if model not in sizes:
             raise ToolError(f"{families[family]['title']} has no {model}; its sizes: {', '.join(sizes)}")
-        md = s.own_size(family, model) or models[model]   # Qwen3.6-35B-A3B: its sizes are not in setup's MODELS
+        md = models[model]
         mac = bool(hw.get("mac"))
         if mac:                                         # a Mac: no card to pick, no KV choice, no RAM mode: unified memory decides
             if rec.get("model") is None and model is not None and s.mac() and hw.get("ram_gb", 0) < s.mac().MIN_STREAM_RAM_GB:
@@ -2135,11 +2089,8 @@ class Tools:
                 "--vision", vision or "no"]
         if family in ("qwen", "coder"):
             args += ["--experimental-speed-projection", "off"]
-        own = bool(s.own_families().get(family))
         for flag, v in (("--kv", kv), ("--gpu", gpu), ("--gpus", gpus), ("--low-ram", low_ram), ("--port", port),
                         ("--data-dir", str(target) if data_dir else None)):
-            if own and flag in ("--kv", "--low-ram"):      # Flash-Next settings: Qwen3.6's engine path does not use them (setup would warn)
-                continue
             if v is not None:
                 args += [flag, str(v)]
         if gguf_dir:

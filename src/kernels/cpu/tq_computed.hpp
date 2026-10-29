@@ -5,7 +5,7 @@
 //   weights 0, 1 = the low and high fp16 of r_0, weights 2, 3 = those of r_1
 //
 // (QTIP's 3INST word, Tseng et al., Cornell-RelaxML/qtip lib/codebook/bitshift.py; the variant "3single" of the
-// f-dsv41-cudalab study, which measured it at the SQNR of the table on real DeepSeek experts and a GEMV without
+// an earlier trellis study, which measured it at the SQNR of the table on real expert tensors and a GEMV without
 // shared-memory lookups.)  The mask fixes the top exponent bits, so |w| lies in [0.125, 2) and the int16 table value
 // round(w * 2^13) used by the CPU kernels is an exact integer (1024..16383): decoder and encoder agree to the bit.
 // The existing types (TQ2_T, TQK6, TQK7) and the table-based K5 / K4 (ids 226 / 227, "version 1") do not use it.

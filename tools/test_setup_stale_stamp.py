@@ -97,7 +97,7 @@ class BuildEngineStamp(unittest.TestCase):
 
     def test_the_q6k_expert_kernels_are_pinned_on(self):
         """PR #2515: a build/ folder first configured while HERO_Q6K_EXPERTS defaulted to OFF keeps it in CMakeCache.txt;
-        the configure line names it, so Qwen3.6 UD-Q4_K_XL (Q4_K gate/up, Q6_K down) still loads."""
+        the configure line names it, so the Qwen3.8 UD-Q4_K_XL file (Q4_K gate/up, Q6_K down) still loads."""
         setup.build_engine(GPU, "none", True, Path("llama"), toolkit=13)
         self.assertIn("-DHERO_Q6K_EXPERTS=ON", self.defs)
         self.assertNotIn("-DHERO_Q6K_EXPERTS=OFF", self.defs)

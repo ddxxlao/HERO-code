@@ -87,11 +87,10 @@ def applies(switch: Switch | str, cfg: Mapping[str, Any] | None, gpus: Iterable[
         return True
     backend = (cfg or {}).get("backend") or backend
     if sw.only == "qwen-gpu":
-        # KVA was measured on the Qwen3.8-Flash-Next shape (48 layers, 512 experts); the engine declines any other.  Setup writes "arch" only for the
-        # families with an engine path of their own (Qwen3.6-35B-A3B: qwen35moe), so a Flash-Next config (the original, Swift, Coder, Unsloth, Gyro, NVFP4) has none.
+        # KVA was measured on the Qwen3.8-Flash-Next shape (48 layers, 512 experts); the engine declines any other.
         return not (cfg or {}).get("arch") and backend in ("cuda", "hip")
     if sw.only == "qwen-cuda-12gb":
-        # the engine's residency-biased routing needs the Flash-Next shape (512 experts, top-10) and a CUDA build; a Qwen3.6 config has an "arch"
+        # the engine's residency-biased routing needs the Flash-Next shape (512 experts, top-10) and a CUDA build
         return not (cfg or {}).get("arch") and backend == "cuda" and _small_nvidia(gpus)
     if sw.only == "qwen-radeon-9000":
         return backend == "hip" and _radeon_9000(gpus)

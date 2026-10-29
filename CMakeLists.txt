@@ -1759,7 +1759,7 @@ if(HERO_NATIVE_EXPERTS)
                                              src/kernels/cpu/iq_avx1.cpp src/kernels/cpu/nvfp4_avx512.cpp src/kernels/cpu/nvfp4_avx2.cpp
                                              src/kernels/cpu/tq_cpu.cpp src/kernels/cpu/tq_avx2.cpp src/kernels/cpu/tq_avx512.cpp)
   else()
-    # the trellis dispatcher alone (the DeepSeek engine's CPU lane and Gyro): tq_cpu.cpp runs its scalar rows when the x86 units are
+    # the trellis dispatcher alone (Gyro): tq_cpu.cpp runs its scalar rows when the x86 units are
     # not compiled (the Metal build does the same)
     target_sources(hero_kernels_cpu PRIVATE src/kernels/cpu/tq_cpu.cpp)
   endif()

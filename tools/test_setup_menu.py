@@ -20,8 +20,8 @@ import setup  # noqa: E402
 
 class FamilyOrder(unittest.TestCase):
     def test_the_menu_order_on_nvidia(self):
-        fams = setup.menu_families(False) + list(setup.OWN_PATH_FAMILIES)
-        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4", "qwen36"])
+        fams = setup.menu_families(False)
+        self.assertEqual(fams, ["qwen", "swift", "coder", "unsloth", "gyro", "nvfp4"])
 
     def test_the_default_stays_the_first_family(self):
         self.assertEqual(setup.menu_families(False)[0], "qwen")

@@ -428,7 +428,7 @@ UNSUPPORTED_MODEL_TYPE = ("This model type isn't supported by the HERO engine. "
 # The picture readers HERO ships a pinned copy of (setup downloads and checks one of these next to the model).
 # (name, size in bytes) as setup.py pins them: setup would delete a file of that name with another size, so only an exact
 # match is called "the official one".
-PINNED_PROJECTORS = {"mmproj-qwen3.8-flash-next-bf16.gguf": 907543008, "mmproj-f16.gguf": 899283584}
+PINNED_PROJECTORS = {"mmproj-qwen3.8-flash-next-bf16.gguf": 907543008}
 OUR_PROJECTOR_TYPES = {"qwen3vl_merger"}
 
 

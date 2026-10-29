@@ -666,8 +666,7 @@ class DeviceAccess(unittest.TestCase):
 
 class EngineLaunchEnv(unittest.TestCase):
     """#2372: every engine program setup runs gets the ready-made HIP engine's rocm/bin on PATH, or Windows shows a
-    "hipblas.dll not found" dialog per DLL and `hero --families` prints nothing (setup then said the engine does
-    not run Qwen3.6)."""
+    "hipblas.dll not found" dialog per DLL and `hero --families` prints nothing (setup then saw no usable family)."""
 
     def engine(self, tmp: Path) -> Path:
         eng = tmp / "engine"
@@ -704,13 +703,13 @@ class EngineLaunchEnv(unittest.TestCase):
 
         def fake_run(cmd, **kw):
             seen["cmd"], seen["env"] = cmd, kw.get("env")
-            return mock.Mock(stdout="qwen4exp qwen35moe\n")
+            return mock.Mock(stdout="qwen4exp\n")
         with tempfile.TemporaryDirectory() as t:
             eng = self.engine(Path(t))
             with mock.patch.object(setup.subprocess, "run", fake_run), \
                  mock.patch.object(setup.os, "name", "nt"):
                 names = setup.engine_families(eng)
-            self.assertEqual(names, {"qwen4exp", "qwen35moe"})
+            self.assertEqual(names, {"qwen4exp"})
             self.assertEqual(seen["cmd"][1], "--families")
             self.assertEqual(seen["env"]["PATH"].split(setup.os.pathsep)[0], str(eng / "rocm" / "bin"))
 

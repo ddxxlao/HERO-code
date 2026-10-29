@@ -77,7 +77,7 @@ class ModelState:
 
 
 #: The families whose setup also fetches the draft layer and the picture reader after the model (setup.py steps 5 and 6). NVFP4 packs bring
-#: theirs inside the download, Qwen3.6 has its own engine path.
+#: theirs inside the download.
 HELPER_FAMILIES = ("qwen", "swift", "coder", "unsloth", "gyro")
 
 

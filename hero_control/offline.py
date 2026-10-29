@@ -147,7 +147,7 @@ def profile_requirements(cfg: Mapping[str, Any]) -> list[str]:
     for key in ("before_load", "beforeLoad"):
         if cfg.get(key):
             needs.append(f"the profile declares a {key} command, which runs before the model loads")
-    for key in ("images", "vision"):
+    for key in ("vision",):
         section = cfg.get(key)
         if isinstance(section, dict):
             for field in ("remote_sources", "allowed_hosts", "url"):

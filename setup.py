@@ -96,7 +96,6 @@ HF_REVISIONS = {
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-GGUF": "99bb8f7f95c7aa7b24a36a7786a4f657b30f5d3d",   # 2026-10-07 (adds IQ3_S)
     "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF": "5348543e0147355ac9cbcb031184a3546350988e",  # 2026-09-29
     "unsloth/Qwen3.8-Flash-Next-GGUF": "38bb39ee97821de2c9009abb7e93950eec396e66",                   # 2026-09-30
-    "unsloth/Qwen3.6-35B-A3B-MTP-GGUF": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",                  # 2026-10-12
     "agentionai/Qwen3.8-Flash-Next-Gyro-GGUF": "1ada08422e404aca51ab9df665f089f34c419c6b",           # 2026-10-13
 }
 
@@ -609,42 +608,6 @@ FAMILIES = {
               "mmproj_sha256": (907543008, "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0")},
 }
 MMPROJ = "mmproj-Qwen3.8-Flash-Next-BF16.gguf"
-# Qwen3.6-35B-A3B (GGUF architecture qwen35moe), Unsloth's GGUFs with the MTP block: a family with an engine path of its
-# own (src/qwen35; `hero` switches to it from the file's architecture).  No pack, no expert profile, no separate MTP
-# draft layer: the engine reads the GGUF as it is, keeps every expert it can in VRAM and computes the rest on the CPU
-# (the hybrid mode), and drafts with the file's own MTP block.  Not in FAMILIES (whose entries are Flash-Next files with
-# packs): OWN_PATH_FAMILIES, offered in the same menu and installed by install_own_path.  NVIDIA (CUDA) and AMD (HIP)
-# only: the Intel Arc (SYCL) engine refuses it.
-QWEN36_FILES = {
-    "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf": (22853663008, "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1"),
-    "Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf": (32611711264, "35fce994cd36104a7dc1bd8a4bdf13778145664c00fdef6773aebc9246e5019c"),
-    "Qwen3.6-35B-A3B-Q8_0.gguf": (37801097504, "c1283d8b80c3e38b2735ddbc9766d3b3126f44d6c484be419d4e101d09a76131"),
-    "mmproj-F16.gguf": (899283584, "71f3cbc1f7cc0f30d09d41cfa924c0060827ebc33bf15ace7e86661e856f0160"),
-}
-OWN_PATH_FAMILIES = {
-    "qwen36": {"title": "Qwen3.6-35B-A3B", "by": "Qwen; GGUFs with the MTP layer by Unsloth", "arch": "qwen35moe",
-               "about": "35B mixture of experts with 3B active (256 experts, top-8): a smaller cousin of "
-                        "Qwen3.8-Flash-Next with the same tokenizer",
-               "hf": hf("unsloth/Qwen3.6-35B-A3B-MTP-GGUF"), "file": "Qwen3.6-35B-A3B-{q}.gguf", "tag": "qwen36-",
-               "mmproj_hf": hf("unsloth/Qwen3.6-35B-A3B-MTP-GGUF"), "mmproj": "mmproj-F16.gguf",
-               "name": "qwen3.6-35b-a3b", "license": "Apache 2.0: https://huggingface.co/Qwen/Qwen3.6-35B-A3B",
-               # RAM: the engine keeps a copy of every expert in RAM when they do not all fit in VRAM (the hybrid mode),
-               # so the file's size plus room for the OS and the rest (measured: UD-Q4_K_XL on a 46 GB PC with a 12 GB
-               # card, 18.75 GiB of experts pinned)
-               "models": {"UD-Q4_K_XL": {"about": "4-bit (Unsloth Dynamic), the smallest", "ram_gb": 32},
-                          "UD-Q6_K_XL": {"about": "6-bit (Unsloth Dynamic), closer to the full model", "ram_gb": 44},
-                          "Q8_0": {"about": "8-bit, the closest to the full model", "ram_gb": 52}},
-               "sha256": QWEN36_FILES,
-               # the engine's KV cache per context token: 10 attention layers + the MTP block, 2 KV heads x 256, K and
-               # V in fp32 (hero-q36)
-               "kv_bytes_per_token": 11 * 2 * 256 * 2 * 4,
-               "mtp": 2,                     # drafts per step (greedy requests): measured best on the R9700
-               # pictures: Unsloth's mmproj (the same projector family as Flash-Next's: qwen3vl_merger) through
-               # hero-vision; a parallel slot's session: its KV cache (kv_bytes_per_token) and the recurrent state of
-               # the 30 GDN layers (state_gb)
-               "vision": True, "state_gb": 0.07}
-}
-PREVIEW_FAMILIES = OWN_PATH_FAMILIES             # the earlier name (tools and tests that import it)
 
 
 # Every model file HERO downloads has a fixed size and SHA-256: (repository, file name) -> (bytes, sha256).  download()
@@ -655,7 +618,6 @@ REPO_PINS = {
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-GGUF": SWIFT_FILES,
     "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF": CODER_FILES,
     "unsloth/Qwen3.8-Flash-Next-GGUF": {**UNSLOTH_SHARDS, **UNSLOTH_IQ4_XS_SHARDS, **UNSLOTH_BIG_SHARDS},
-    "unsloth/Qwen3.6-35B-A3B-MTP-GGUF": QWEN36_FILES,
     "agentionai/Qwen3.8-Flash-Next-Gyro-GGUF": GYRO_FILES,
 }
 # EXPERIMENTAL, off by default (setup asks): a control vector shipped with the repository, see its README
@@ -4661,187 +4623,6 @@ def build_vision_cpu(eng: Path, stamp: Path, meta: dict, llama, vsrc) -> Path:
     return eng
 
 
-# ------------------------------------------------------------------------------------------------ image generation
-IMAGE_ENGINE = ROOT / "engine-image"           # sd-cli for Qwen-Image-2.1-Turbo (tools/image/qimage.py), --images
-
-
-def _qimage():
-    if str(ROOT / "tools" / "image") not in sys.path:
-        sys.path.insert(0, str(ROOT / "tools" / "image"))
-    import qimage
-    return qimage
-
-
-def get_sd_cpp() -> Path:
-    """stable-diffusion.cpp and its ggml at the pinned commits (tools/image/qimage.py), as zips: no git."""
-    QI = _qimage()
-    src = ROOT / "third_party" / "stable-diffusion.cpp"
-    if QI.source_ok(src):
-        return src
-    z1 = ROOT / "third_party" / f"stable-diffusion.cpp-{QI.SD_CPP_COMMIT[:7]}.zip"
-    z2 = ROOT / "third_party" / f"sd-ggml-{QI.SD_GGML_COMMIT[:7]}.zip"
-    download(QI.SD_CPP_ZIP, z1, "stable-diffusion.cpp source")
-    download(QI.SD_GGML_ZIP, z2, "stable-diffusion.cpp's ggml source")
-    try:
-        src = QI.unpack_source(ROOT / "third_party", z1, z2)
-    except zipfile.BadZipFile:
-        for z in (z1, z2):
-            drop_archive(z)
-        raise
-    for z in (z1, z2):
-        z.unlink(missing_ok=True)
-        z.with_name(z.name + ".done").unlink(missing_ok=True)
-    return src
-
-
-def vulkan_sdk() -> Path | None:
-    """What a Vulkan build of sd-cli needs (the Vulkan headers and glslc): $VULKAN_SDK, the distribution's packages,
-    else (Linux) the LunarG SDK unpacked into third_party (no sudo, ~370 MB).  Returns the SDK folder it put on PATH,
-    None when the system's files are used."""
-    QI = _qimage()
-    have = os.environ.get("VULKAN_SDK")
-    if have and Path(have).is_dir():
-        return None
-    if not WIN and shutil.which("glslc") and Path("/usr/include/vulkan/vulkan.h").exists():
-        return None
-    if WIN:
-        fail("compiling the image generator for this GPU (Vulkan) needs the Vulkan SDK",
-             "install it from https://vulkan.lunarg.com/sdk/home#windows, open a new window and run setup again "
-             "(or --image-backend cpu)")
-    base = ROOT / "third_party" / "vulkan-sdk"
-    sdk = base / QI.VULKAN_SDK_VERSION / "x86_64"
-    if not (sdk / "bin" / "glslc").exists():
-        import tarfile
-        tar = ROOT / "third_party" / f"vulkansdk-{QI.VULKAN_SDK_VERSION}.tar.xz"
-        download(QI.VULKAN_SDK_URL, tar, f"the Vulkan SDK {QI.VULKAN_SDK_VERSION} (LunarG, for compiling only)")
-        verify_sha256(tar, QI.VULKAN_SDK_SIZE, QI.VULKAN_SDK_SHA256)
-        shutil.rmtree(base, ignore_errors=True)
-        base.mkdir(parents=True)
-        with tarfile.open(tar) as t:
-            t.extractall(base, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
-        tar.unlink(missing_ok=True)
-        tar.with_name(tar.name + ".done").unlink(missing_ok=True)
-    os.environ["VULKAN_SDK"] = str(sdk)
-    os.environ["PATH"] = os.pathsep.join([str(sdk / "bin"), os.environ.get("PATH", "")])
-    os.environ["LD_LIBRARY_PATH"] = os.pathsep.join([str(sdk / "lib" / "VulkanLoader" / "lib"),
-                                                     os.environ.get("LD_LIBRARY_PATH", "")]).rstrip(os.pathsep)
-    ok(f"Vulkan SDK: {sdk}")
-    return sdk
-
-
-def apply_native_runner(src: Path) -> None:
-    """I2: tools/image/sdcpp_native's runner into the stable-diffusion.cpp source (idempotent)."""
-    import importlib.util
-    QI = _qimage()
-    spec = importlib.util.spec_from_file_location("hero_sdcpp_native_apply", QI.NATIVE_DIR / "apply.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.apply(src)
-
-
-def build_image_engine(backend: str, gpu: dict) -> tuple[Path, list[str]]:
-    """Compile sd-cli for `backend` into engine-image/ (again only when the pins or the backend changed) -> (its path,
-    the library folders it runs with)."""
-    QI = _qimage()
-    IMAGE_ENGINE.mkdir(exist_ok=True)
-    exe, stamp = IMAGE_ENGINE / QI.SD_EXE, IMAGE_ENGINE / "BUILD.json"
-    arch = gpu.get("arch") if backend in ("cuda", "hip") else None
-    want = QI.build_stamp(backend, arch)
-    meta = json.loads(stamp.read_text(encoding="utf-8")) if stamp.exists() else {}
-    lib_dirs = [d for d in meta.get("lib_dirs") or [] if Path(d).is_dir()]
-    if exe.exists() and {k: meta.get(k) for k in want} == want:
-        ok(f"image generator already built ({backend})")
-        return exe, lib_dirs
-    src = get_sd_cpp()
-    if backend in QI.NATIVE_BACKENDS:                 # HERO's DiT runner (inert unless the config asks for it)
-        apply_native_runner(src)
-    vcvars, lib_dirs = None, []
-    if backend == "cuda":
-        nvcc, cuda_v = find_nvcc()
-        if nvcc is None:
-            fail("compiling the image generator for NVIDIA needs the CUDA Toolkit (nvcc)",
-                 "install it from https://developer.nvidia.com/cuda-downloads and run setup again "
-                 "(or --image-backend vulkan / cpu)")
-        root = Path(nvcc).resolve().parent.parent
-        defs = QI.cmake_defs("cuda", arch=arch, cuda_root=root) + [f"-DCMAKE_CUDA_COMPILER={nvcc}"] + \
-            host_compiler_defs(True)
-        vcvars = find_vcvars(cuda_v) if WIN else None
-        lib_dirs = [str(root / "bin")] if WIN else [str(d) for d in (root / "lib64", root / "lib") if d.is_dir()]
-    elif backend == "hip":
-        root, dirs = rocm_root([arch])
-        os.environ.update({"HIP_PLATFORM": "amd", "ROCM_PATH": str(root), "HIP_PATH": str(root)})
-        os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(dirs + [os.environ.get("LD_LIBRARY_PATH", "")]).rstrip(os.pathsep)
-        defs = QI.cmake_defs("hip", arch=arch, rocm=root)
-        lib_dirs = list(dirs)
-    elif backend == "vulkan":
-        sdk = vulkan_sdk()
-        defs = QI.cmake_defs("vulkan")
-        vcvars = find_vcvars() if WIN else None
-        if sdk is not None:                          # the SDK's loader (lib/VulkanLoader): CMake does not look there
-            loader = sdk / "lib" / "VulkanLoader" / "lib"
-            defs += [f"-DVulkan_LIBRARY={loader / 'libvulkan.so'}", f"-DVulkan_INCLUDE_DIR={sdk / 'include'}",
-                     f"-DVulkan_GLSLC_EXECUTABLE={sdk / 'bin' / 'glslc'}"]
-            import ctypes.util
-            if not ctypes.util.find_library("vulkan"):
-                lib_dirs = [str(loader)]             # no system Vulkan loader to run with: the SDK's
-    else:
-        defs = QI.cmake_defs("cpu")
-        vcvars = find_vcvars() if WIN else None
-    say(f"  Compiling the image generator (stable-diffusion.cpp {QI.SD_CPP_COMMIT[:7]}, {backend}; 5-20 minutes, "
-        "once) ...")
-    bdir = ROOT / f"build-image-{backend}"
-    cmake_build(src, bdir, "sd-cli", defs, vcvars, f"build-image-{backend}.bat" if WIN else "")
-    built = bdir / "bin" / QI.SD_EXE
-    if not built.exists():
-        fail(f"the image generator's build finished without {built}", f"delete the folder {bdir.name} and run again")
-    shutil.copy2(built, exe)
-    stamp.write_text(json.dumps({**want, "lib_dirs": lib_dirs}, indent=1))
-    ok(f"image generator compiled: {exe}")
-    return exe, lib_dirs
-
-
-def image_backend_choice(a, gpu: dict | None, hip: bool) -> tuple[str, str, float]:
-    """--images: (backend, quant, the GPU memory in GB the quant was picked for).  An explicit --image-quant above the
-    recommendation is kept, with a warning (recommend, never force)."""
-    QI = _qimage()
-    vendor = "amd" if hip else ((gpu or {}).get("vendor") or "nvidia")
-    backend = a.image_backend or QI.pick_backend({**gpu, "vendor": vendor} if gpu else None, WIN)
-    gb = float((gpu or {}).get("vram_gb") or 0.0) if backend != "cpu" else 0.0
-    rec = QI.pick_quant(gb) if backend != "cpu" else "Q4_K_M"
-    quant = a.image_quant or rec
-    if QI.QUANTS.index(quant) > QI.QUANTS.index(rec):
-        warn(f"image model {quant}: setup recommends {rec} for {gb:.0f} GB of GPU memory; kept as you chose "
-             "(stable-diffusion.cpp then keeps part of it in RAM, which is slower)")
-    return backend, quant, gb
-
-
-def setup_images(a, gpu: dict, hip: bool, models_dir: Path) -> dict | None:
-    """--images qwen-image: sd-cli for this GPU and Qwen-Image-2.1-Turbo's three files -> the run config's "images"
-    section (serve/images.py); None for --images no, or when not wanted after all."""
-    if not a.images or a.images == "no":
-        return None
-    QI = _qimage()
-    backend, quant, _ = image_backend_choice(a, gpu, hip)
-    say(f"  Image generation: Qwen-Image-2.1-Turbo {quant} on {backend} (8 steps, CFG 1; POST /v1/images/generations)")
-    say("  " + QI.LICENSE_NOTE)
-    need = sum(QI.FILES[k][2] for k in (quant, "vae", "llm")) / 1e9
-    if ask(f"Download the image model ({need:.1f} GB) and set up image generation?", ["y", "n"], "y", a.yes) != "y":
-        return None
-    models_dir.mkdir(parents=True, exist_ok=True)
-    if free_gb(models_dir) < need + 5:
-        warn(f"less than {need + 5:.0f} GB free for the image model: the download may run out of disk space")
-    exe, lib_dirs = build_image_engine(backend, gpu or {})
-    for name in (quant, "vae", "llm"):
-        repo, path, size, sha = QI.FILES[name]
-        dst = QI.local_path(models_dir, name)
-        download(QI.file_url(name, hf_endpoint()), dst, f"image model: {Path(path).name}")
-        verify_sha256(dst, size, sha)
-    cfg = QI.image_config(backend, quant, exe, models_dir, uma=QI.is_apu(gpu), lib_dirs=lib_dirs,
-                          policy=a.image_gpu_policy or "auto", native=getattr(a, "image_native", None) == "on")
-    ok(f"image generation: {quant} on {backend}, GPU policy {cfg['gpu_policy']}")
-    return cfg
-
-
 # ------------------------------------------------------------------------------------------------ the engine
 def driver_major(gpu):
     try:
@@ -6384,8 +6165,6 @@ def write_setup_config(cfg_path: Path, cfg: dict, source: Path | None = None, ex
     if old is None:
         carry_user_args({}, cfg, explicit)              # a first install: only what this run's command line sets (nothing to report as kept)
     user_args.stamp(cfg)                               # args_written: what setup wrote, for the next hand-edit check
-    if "images" in cfg and cfg["images"] is None:      # --images no (or not downloaded): no image section
-        cfg.pop("images")
     bak = None
     if cfg_path.is_file() and old != cfg:
         bak = cfg_path.with_name(cfg_path.name + ".bak")
@@ -6437,26 +6216,10 @@ def previous_config(elsewhere_first: list, settings: dict):
     return next((c for c in sorted(cands, key=lambda p: p.stat().st_mtime, reverse=True) if readable_config(c)), None)
 
 
-def own_path_config(cfg: dict) -> bool:
-    """A config for a family with its own engine path (Qwen3.6): its --mtp is a draft count, not a draft layer."""
-    return cfg.get("arch") in {d["arch"] for d in OWN_PATH_FAMILIES.values()}
-
-
 def choices_from_config(cfg_path: Path) -> dict:
     """The setup answers a config was written with (family, size, context, KV, images, projection, network)."""
     cfg = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
     tag = cfg_path.stem[len("hero-"):]
-    own = next((f for f, d in OWN_PATH_FAMILIES.items() if tag.startswith(d["tag"])), None)
-    if own is not None:                                # Qwen3.6: its own sizes; no KV / images / projection settings
-        d = OWN_PATH_FAMILIES[own]
-        size = next((m for m in d["models"] if m.lower() == tag[len(d["tag"]):].lower()), None)
-        a = cfg.get("args", [])
-        ctx = a[a.index("--max-context") + 1] if "--max-context" in a and a.index("--max-context") + 1 < len(a) else None
-        vis = cfg.get("vision")
-        return {"family": own, "model": size, "context": int(ctx) if ctx and ctx.isdigit() else None, "kv": None,
-                "vision": ("gpu" if vis.get("gpu") else "cpu") if isinstance(vis, dict) else "none", "esp": "off", "host": cfg.get("host"), "api_key": cfg.get("api_key"),
-                "port": cfg.get("port"), "gpu": cfg.get("gpu"), "layer_split": None,
-                "cuda": 12 if config_toolkit(cfg) == 12 else None, "vram_reserve_mib": None}
     family = next((f for f, d in FAMILIES.items() if d["tag"] and tag.startswith(d["tag"])), "qwen")
     model = (tag[len(FAMILIES[family]["tag"]):] if tag.startswith(FAMILIES[family]["tag"]) else tag).upper()
     if model not in MODELS:                            # (sizes have no dash except UD-Q4_K_XL: the old rule)
@@ -6481,12 +6244,10 @@ def choices_from_config(cfg_path: Path) -> dict:
 def calibration_targets(have: list, model: str | None, family: str | None) -> list:
     """#2036: the installed configs `--calibrate --model X` (and/or --family) means; every config with neither."""
     if not (model or family):
-        return [c for c in have if choices_from_config(c)["family"] not in (*OWN_PATH_FAMILIES,)]
+        return list(have)
     out = []
     for c in have:
         ch = choices_from_config(c)
-        if ch["family"] in OWN_PATH_FAMILIES:          # the tuning measures Flash-Next's engine settings
-            continue
         if (not model or ch["model"] == model) and (not family or ch["family"] == family):
             out.append(c)
     return out
@@ -6745,8 +6506,7 @@ def update_install(have: list, a) -> int:
     mtp_done: set = set()
     for cfg_path in have:
         cfg = upgrade_config(cfg_path, json.loads(cfg_path.read_text(encoding="utf-8-sig")))
-        if not own_path_config(cfg):
-            refresh_shared_draft_vocab(cfg, mtp_done)
+        refresh_shared_draft_vocab(cfg, mtp_done)
         if cfg.get("backend") == "hip" and WIN:
             hip_runtime_beside_exe(Path(cfg["exe"]).parent)   # #468 #461
         ok(f"{cfg.get('model_name', cfg_path.stem)}: up to date")
@@ -6828,7 +6588,7 @@ def _start(cfg_path: Path, port: int | None, gpu: int | list | None = None, open
             "api key" if k == "api_key" else ("the browser opens" if v else "no browser") if k == "open_browser"
             else f"{k.replace('_', ' ')} {v}" for k, v in keep.items()))
     cfg_path.touch()                                     # the most recently used model
-    if "--mtp" in cfg["args"][:-1] and not own_path_config(cfg):
+    if "--mtp" in cfg["args"][:-1]:
         refresh_draft_vocab(Path(cfg["args"][cfg["args"].index("--mtp") + 1]), cfg.get("draft_vocab", "cjk"))
     cmd = [sys.executable, str(ROOT / "serve" / "server.py"), "--engine", "hero", "--config", str(cfg_path),
            "--port", str(port or cfg.get("port", 8080))]
@@ -7488,360 +7248,6 @@ def engine_families(eng: Path) -> set:
     return names if "qwen4exp" in names else {"qwen4exp"}
 
 
-def own_path_context(fam: dict, vram_gb: float) -> int:
-    """The recommended context for an own-path family: its KV cache (VRAM) beside the dense weights and the most-used
-    experts - 32K up to 16 GB, 64K up to 24 GB, 128K above."""
-    return 32768 if vram_gb <= 16.5 else 65536 if vram_gb <= 24.5 else 131072
-
-
-def own_path_size(fam: dict, ram: float) -> str:
-    """The recommended size: the largest file whose RAM need this PC has (the smallest when none fits)."""
-    fits = [m for m, d in fam["models"].items() if ram >= d["ram_gb"]]
-    return max(fits, key=lambda m: fam["sha256"][fam["file"].format(q=m)][0]) if fits else next(iter(fam["models"]))
-
-
-def own_path_vision(a, fam: dict, gpu: dict, hip: bool) -> str:
-    """The image encoder for an own-path family (Qwen3.6-35B-A3B): "gpu", "cpu" or "none".  Pictures are on by default (owner rule
-    2026-10-18) and the reader follows hero_control/vision_reader.py's one rule on every make of card: the CPU encoder under 24 GB of
-    VRAM (the GPU one takes ~1.4 GB the experts would use), the GPU encoder from 24 GB.  --vision yes|no|gpu|cpu, else a question whose
-    default answer is yes; what is asked for with --vision gpu / cpu is kept, with a note (recommend, never force)."""
-    asked = a.vision
-    vram = float(gpu.get("vram_gb", 0.0))
-    if asked in ("no", "none"):
-        return "none"
-    if asked is None:
-        from hero_control import vision_reader as VR
-        mode = VR.default_mode(vram)
-        say()
-        say(f"  Images: {fam['title']} can also read pictures (screenshots, photos, scanned pages). This adds a "
-            f"{fam['sha256'][fam['mmproj']][0] / 1e9:.1f} GB download" + (
-                " and the image encoder runs on the GPU (about 1-1.4 GB of VRAM kept free, a fraction of a second per picture)."
-                if mode == "gpu" else
-                "; the encoder runs on the CPU (a few seconds per picture), because the GPU encoder would take ~1.4 GB "
-                "of VRAM from the experts on this card (--vision gpu to use it anyway)."))
-        if ask("Do you want images?", ["y", "n"], "y", a.yes) != "y":
-            return "none"
-        asked = "yes"
-    if hip:
-        return hip_vision(asked, vram)               # settled against the engine's readers in hip_reader() (GPU reader, else CPU)
-    if asked == "yes":
-        asked = "gpu" if (vram <= 0 or vram >= IMAGES_GPU_ENCODER_MIN_VRAM_GB) else "cpu"
-    if asked == "gpu" and 0 < vram < IMAGES_GPU_ENCODER_MIN_VRAM_GB:
-        warn(f"the GPU image encoder takes ~1.4 GB of VRAM, which on a {vram:.0f} GB card is room the experts would use: "
-             "--vision cpu reads pictures on the CPU instead (a few seconds each); kept as you chose")
-    return asked
-
-
-def own_path_parallel_slot_gb(fam: dict, ctx: int) -> float:
-    """The VRAM one batch slot's session takes: its KV cache (fp32 K and V of the attention layers and the MTP block) and
-    the recurrent state of the GDN layers."""
-    return ctx * fam["kv_bytes_per_token"] / 1e9 + fam["state_gb"]
-
-
-PARALLEL_SMALL_SHARE = 0.35     # a card that does not hold every expert: the slots' sessions may take this share of the room the
-                                # experts would have (VRAM less ~4.5 GB for the dense weights and buffers).  Measured (Q4_K_XL):
-                                # RTX 3060 12 GB, 8K context, 4 slots (23% of that room): a request alone -4%; A4000 / P100
-                                # 16 GB, 32K, 2 slots (27%): -11% / -9%, 4 slots (54%): -27% and no gain together.
-
-
-def own_path_parallel_fits_all(fam: dict, model: str, vram_gb: float, ctx: int, n: int) -> bool:
-    """True where every routed expert still sits in VRAM beside n slots' sessions (one more session than the slots: the
-    solo path's own)."""
-    size = fam["sha256"][fam["file"].format(q=model)][0] / 1e9
-    base = size * 0.93 + 4.5       # the routed experts + the dense weights and buffers (the file's 7% beyond them)
-    return base + (n + 1) * own_path_parallel_slot_gb(fam, ctx) <= vram_gb
-
-
-def own_path_parallel_recommend(fam: dict, model: str, vram_gb: float, ctx: int) -> int:
-    """How many requests at once to recommend: 0 = none (the card cannot hold even two slots).  Where every routed expert
-    still fits in VRAM with the slots' sessions, up to 4 (a batch reads each expert once for all its rows).  On a card
-    that does not hold every expert even for one session (the hybrid mode already) it is recommended too, as an offer with
-    its price said: measured on
-    an RTX 3060 12 GB, 4 requests together run ~1.5x as fast as one, a request alone ~5% slower, because the slots take
-    VRAM from the expert cache; up to the count whose sessions leave PARALLEL_SMALL_ROOM_GB of the card."""
-    slot = own_path_parallel_slot_gb(fam, ctx)
-    best = max([n for n in (2, 3, 4) if own_path_parallel_fits_all(fam, model, vram_gb, ctx, n)], default=0)
-    if best:
-        return best
-    if own_path_parallel_fits_all(fam, model, vram_gb, ctx, 0):
-        return 0       # a card that holds every expert for one session only: more sessions would push experts to the CPU
-                       # (measured on a 32 GB R9700 at 128K: 4 slots left 15 of 256 experts per layer, decode 81 tok/s
-                       # against ~180): not offered there, a number asked for is kept
-    room = max(vram_gb - 4.5, 0.0)
-    return max([n for n in (2, 3, 4) if n * slot <= PARALLEL_SMALL_SHARE * room], default=0)
-
-
-def own_path_parallel_note(a_parallel, fam: dict, model: str, vram_gb: float, ctx: int) -> list:
-    """What setup says about "parallel" for an own-path family: the recommendation, or how the asked count compares with
-    it (kept as asked: recommend, never force)."""
-    rec = own_path_parallel_recommend(fam, model, vram_gb, ctx)
-    slot = own_path_parallel_slot_gb(fam, ctx)
-    if a_parallel is None or a_parallel <= 1:
-        if not rec:
-            return ["Several requests at once (opt-in, --parallel N): left at one at a time, because this card cannot spare "
-                    f"the room: each session takes ~{slot:.1f} GB of VRAM at this context, and where the card holds every "
-                    "expert only for one session, more would move experts to the CPU and slow every request a lot (a "
-                    "smaller context leaves room for more; docs/QWEN36.md)."]
-        if own_path_parallel_fits_all(fam, model, vram_gb, ctx, rec):
-            return [f"Several requests at once (opt-in): --parallel {rec} decodes up to {rec} together instead of one after "
-                    f"the other (each takes ~{slot:.1f} GB of VRAM at this context; docs/BATCHING.md)."]
-        return [f"Several requests at once (opt-in): --parallel {rec} decodes up to {rec} together, so a second user or agent "
-                "starts at once instead of waiting for the first. The price on this card, which does not hold every expert: "
-                f"each session takes ~{slot:.1f} GB of VRAM from the expert cache, so a request alone runs about 4-11% "
-                "slower, and next to one-at-a-time WITH the draft layer the requests together are only 1.0-1.15x faster "
-                "(measured, Q4_K_XL: RTX 3060 12 GB at 8K context, 4 requests: 1.15x, alone -4%; A4000 / P100 16 GB at "
-                "32K, 2 requests: 1.0x, alone -7 to -11%). Worth it for several users at once, not for one chat "
-                "(docs/QWEN36.md)."]
-    lines = [f"parallel requests: {a_parallel} at once (each takes ~{slot:.1f} GB of VRAM at this context, "
-             f"{a_parallel * slot:.1f} GB in all)"]
-    if a_parallel > PARALLEL_MAX:
-        lines.append(f"the engine runs at most {PARALLEL_MAX} at once; it will use {PARALLEL_MAX}")
-    if not rec:
-        lines.append("recommended for this card: one at a time - there is no room for more sessions; kept as you chose")
-    elif a_parallel > rec:
-        lines.append(f"recommended for this card: {rec} - more slots leave fewer experts in VRAM, which can make every "
-                     "request slower; kept as you chose")
-    return lines
-
-
-def install_own_path(a, family, gpu, hip, amd, cuda_tk, multi, port, ram, adopted):
-    """Steps 2-7 for a family with its own engine path (OWN_PATH_FAMILIES: Qwen3.6-35B-A3B): the size, the context, the
-    engine, the GGUF (pinned revision, size and SHA-256), the tokenizer from the GGUF, the config and the start
-    script.  The engine places the experts itself (every one in VRAM when they fit, else the most-used ones there and
-    the rest on the CPU), so there is no pack, profile or RAM budget to choose."""
-    fam = OWN_PATH_FAMILIES[family]
-    say()
-    say(f"  {fam['title']} - {fam['by']}: {fam['about']}")
-    ok(f"model: {fam['title']}")
-    if fam.get("license"):
-        say(f"  Its license: {fam['license']}")
-    if multi:
-        warn(f"{fam['title']} runs on one GPU so far: using GPU {gpu.get('index', 0)} ({gpu_name(gpu)}) only")
-    names = list(fam["models"])
-    if a.model and a.model not in names:
-        fail(f"{fam['title']} has no {a.model} model file", "choose one of: " + ", ".join(names))
-    say()
-    for i, m in enumerate(names, 1):
-        d = fam["models"][m]
-        size = fam["sha256"][fam["file"].format(q=m)][0]
-        fit = "" if ram >= d["ram_gb"] else f"   <- needs {d['ram_gb']} GB RAM, you have {ram:.0f}"
-        say(f"  {i}) {m:10s} {d['about']}; download {size / 1e9:.1f} GB{fit}")
-    rec = own_path_size(fam, ram)
-    if not a.model:
-        say(f"  Recommended for {ram:.0f} GB of RAM: {rec} (the largest that fits; any size can be chosen)")
-    model = a.model or names[int(ask("Which size?", [str(i) for i in range(1, len(names) + 1)],
-                                     str(names.index(rec) + 1), a.yes)) - 1]
-    if ram < fam["models"][model]["ram_gb"]:
-        confirm_risk(f"{model} needs about {fam['models'][model]['ram_gb']} GB of RAM; this PC has {ram:.0f} GB: the "
-                     "OS may page and it may not start", bool(a.model), a.yes,
-                     f"{model} needs about {fam['models'][model]['ram_gb']} GB of RAM",
-                     f"choose a smaller size, or --model {model} --yes to install it anyway", "  Install it anyway?")
-        warn(f"installing {model} with {ram:.0f} GB of RAM, as you chose")
-    ok(f"size: {model}")
-    tag = fam["tag"] + model
-    rec_ctx = own_path_context(fam, gpu.get("vram_gb", 0.0))
-    if a.context:
-        ctx = a.context
-    else:
-        ctxs = [c for c in CONTEXTS if c <= 262144]   # the model's trained length; no rope scaling on this path yet
-        say()
-        say("  Context length = how much text the model can see at once. Its cache takes "
-            f"{fam['kv_bytes_per_token'] * 32768 / 2**30:.1f} GB of VRAM per 32K tokens, room the experts would use:")
-        for i, c in enumerate(ctxs, 1):
-            say(f"  {i}) {c // 1024}K tokens" + ("   (recommended for your GPU)" if c == rec_ctx else ""))
-        ctx = ctxs[int(ask("Context?", [str(i) for i in range(1, len(ctxs) + 1)], str(ctxs.index(rec_ctx) + 1),
-                           a.yes)) - 1]
-    if ctx > 262144:
-        warn(f"{ctx // 1024}K is past {fam['title']}'s trained 262,144 positions and this engine path has no rope "
-             "scaling yet: kept as you chose, but answers past 256K are untested")
-    ok(f"context: {ctx} tokens")
-    vision = own_path_vision(a, fam, gpu, hip)
-    ok("images: " + {"none": "off", "gpu": "on", "cpu": "on (encoder on the CPU)"}[vision])
-    vram_gb = float(gpu.get("vram_gb", 0.0))
-    par = getattr(a, "parallel", None)
-    par_said = False
-    if par is None and not a.yes:                      # offered, with its price; Enter keeps one at a time (never forced)
-        say()
-        for line in own_path_parallel_note(None, fam, model, vram_gb, ctx):
-            say("  " + line)
-        par_said = True
-        if own_path_parallel_recommend(fam, model, vram_gb, ctx):
-            n = int(ask("How many requests at once (1 = one at a time)?", [str(i) for i in range(1, PARALLEL_MAX + 1)],
-                        "1", a.yes))
-            par = n if n > 1 else None
-    if a.rope_scaling or a.rope_scale or a.kv or a.resident_budget_gib is not None or a.low_ram not in (None, "auto"):
-        warn(f"--rope-scaling / --kv / --resident-budget-gib / --low-ram are Flash-Next settings: {fam['title']} "
-             "does not use them")
-    folder = Path(a.gguf_dir) if a.gguf_dir else Path(a.models_dir) / tag
-    gguf = folder / fam["file"].format(q=model)
-    size = fam["sha256"][gguf.name][0]
-    part = gguf.with_name(gguf.name + ".part")
-    def have(p: Path) -> bool:                         # --gguf-dir: the person's own file has no finish mark; verify_sha256 checks and writes it
-        return p.exists() and (done(p) or bool(a.gguf_dir))
-    left = 0 if have(gguf) else (size - (part.stat().st_size if part.is_file() else 0)) / 1e9
-    if left and free_gb(folder) < left:
-        fail(f"not enough free disk space in {folder}: need ~{left:.0f} GB, {free_gb(folder):.0f} GB free", ("use --data-dir on a bigger drive (hero launch --data-dir)" if CONTROL else "use --models-dir on a bigger drive"))
-    if left and free_gb(folder) < left + 1:
-        warn(f"little free disk space in {folder}: {free_gb(folder):.1f} GB free for about {left:.1f} GB. Setup goes on and should fit")
-
-    step(3, "Python packages")
-    pip_install(runtime_packages(),
-                "numpy, jinja2, regex, pyyaml, tqdm, requests, cmake, ninja, pillow, psutil, textual (the screens)")
-
-    step(4, "the HERO engine")
-    llama, eng, meta, lib_dirs, gpu, vision = engine_step(a, gpu, hip, amd, cuda_tk, vision)
-    reader = None
-    if hip and vision != "none":
-        vision, reader = hip_reader(eng, vision, gpu)
-    elif vision != "none" and not (eng / VEXE).exists():
-        warn("this engine has no image encoder: images off (run setup again with --build to compile it)")
-        vision = "none"
-    if fam["arch"] not in engine_families(eng):
-        fail(f"this engine ({meta.get('version')}) does not run {fam['title']} yet",
-             "update HERO, or compile the engine with --build, and run setup again")
-    ok("engine: the engine component (looked up when the model loads)" if CONTROL else f"engine: {eng / EXE}")
-
-    step(5, f"downloading {fam['title']} {model}")
-    if have(gguf):
-        ok(f"{gguf.name} already downloaded")
-    else:
-        if a.gguf_dir:
-            fail(f"{gguf} is missing", f"put {gguf.name} in {folder}, or drop --gguf-dir to download it")
-        download(fam["hf"] + gguf.name, gguf)
-    verify_sha256(gguf, *fam["sha256"][gguf.name], own=bool(a.gguf_dir))
-    ok(f"model file: {gguf}")
-    mmproj = folder / fam["mmproj"]
-    if vision != "none":                               # the image encoder: Unsloth's mmproj, pinned, size + SHA-256 checked
-        if have(mmproj):
-            ok(f"{mmproj.name} already downloaded")
-        else:
-            if a.gguf_dir:
-                fail(f"{mmproj} is missing", f"put {mmproj.name} in {folder}, or drop --gguf-dir to download it")
-            download(fam["mmproj_hf"] + mmproj.name, mmproj, "vision encoder")
-        verify_sha256(mmproj, *fam["sha256"][mmproj.name], own=bool(a.gguf_dir))
-        ok(f"vision encoder: {mmproj}")
-
-    step(6, "preparing the model for HERO")
-    data, _ = data_folder_for(a)
-    pack = data / "packs" / tag.lower()            # only the tokenizer: the engine reads the GGUF itself
-    if not (pack / "tokenizer" / "vocab.json").exists():
-        run([sys.executable, str(ROOT / "tools" / "hero_tokenizer.py"), "--gguf", str(gguf), "--out", str(pack)],
-            env=dict(os.environ, HERO_GGUF_PY=str(llama / "gguf-py")))
-    ok(f"tokenizer: {pack / 'tokenizer'}")
-
-    step(7, "writing the start script")
-    args = ["--native", str(gguf), "--max-context", str(ctx), "--prefill", "auto", "--mtp", str(fam["mtp"])]
-    if a.vram_reserve_mib is not None:             # VRAM left free for other programs: the experts take that much less
-        vram = gpu.get("vram_gb", 0.0)
-        if vram > 0:
-            args += ["--expert-vram", f"{max(vram - 3.0 - a.vram_reserve_mib / 1024, 0):.1f}"]
-        ok(f"VRAM kept free for other programs: about {a.vram_reserve_mib} MiB (the experts' share is set lower)")
-    cfg = {"exe": engine_exe(eng), "args": args, "cwd": str(ROOT), "tokenizer": str(pack / "tokenizer"),
-           "model_name": f"{fam['name']}-{model.lower()}", "arch": fam["arch"],
-           "log": str(home() / f"hero-{tag.lower()}.log"), "lib_dirs": lib_dirs, "port": port}
-    if cuda_tk == 12:
-        cfg["cuda"] = 12
-    if hip:
-        cfg["backend"] = "hip"
-    if gpu.get("count", 1) > 1 or a.gpu is not None:
-        cfg["gpu"] = gpu["index"]
-        cfg["gpus_asked"] = True
-    if a.host:
-        cfg["host"] = a.host
-    if a.api_key:
-        cfg["api_key"] = a.api_key
-    if a.browser is not None:
-        cfg["open_browser"] = a.browser
-    cfg["args"] = recommend_pool_workers(cfg["args"])   # --pool-workers: this engine path's CPU expert threads too
-    for line in pool_workers_note(cfg["args"]):
-        warn(line)
-    cfg_path = home() / f"hero-{tag.lower()}.json"
-    if vision != "none":
-        old_cfg = cfg_path if cfg_path.is_file() else adopted
-        vt = vision_tokens(getattr(a, "vision_tokens", None), vision, old_cfg)
-        cfg["args"].append("--vision")
-        cfg["vision"] = {"exe": str(eng / VEXE), "mmproj": str(mmproj), "model": str(gguf), "gpu": vision == "gpu",
-                         "max_tokens": vt}          # the text model, opened vocab-only
-        if reader is not None:                      # AMD: the HIP reader with the CPU reader behind it, or the CPU reader
-            from hero_control import vision_reader as VR
-            cfg["vision"] = VR.vision_section(reader, cfg["vision"])
-        if vision == "cpu":
-            cfg["vision"]["threads"] = vision_threads()
-    elif getattr(a, "vision_tokens", None) is not None:
-        warn("--vision-tokens: images are off, so it is not used")
-    # requests at once ("parallel", opt-in): written only when given; the recommendation is said once
-    if par is not None:
-        if par >= 2:
-            cfg["parallel"] = par
-            for i, line in enumerate(own_path_parallel_note(par, fam, model, vram_gb, ctx)):
-                (ok if i == 0 else warn)(line)
-        else:
-            cfg["parallel"] = 1
-            ok("parallel requests: one at a time (--parallel 1)")
-    write_setup_config(cfg_path, cfg, adopted if adopted is not None and adopted.name == cfg_path.name else None, explicit_args(a))
-    script = write_run_script(tag, cfg_path, port, cfg.get("open_browser") is not False)
-    ok(f"start script: {script.name}")
-    say()
-    say("All set.")
-    say(f"  API (OpenAI):     http://127.0.0.1:{port}/v1   (any API key; model name: anything)")
-    say(f"  API (Anthropic):  http://127.0.0.1:{port}/v1/messages")
-    say(f"  Next time:        just run {'START-HERE.bat' if WIN else './setup.sh'} (or {script.name}) - it starts right away")
-    if vision != "none":
-        say("  Images:           send them in the chat page, in chat.py (/image <path>) or over the API")
-    if par is None and not par_said:                   # the opt-in, said once (nothing changes)
-        for line in own_path_parallel_note(None, fam, model, vram_gb, ctx):
-            say("  " + line)
-    if a.no_start:
-        return 0
-    return start(cfg_path, port)
-
-
-def preview_family(a) -> int:
-    """--family qwen36: a family setup knows but the engine does not run yet (PREVIEW_FAMILIES).  Downloads the chosen
-    size (pinned revision, size and SHA-256 checked) and, with --vision, the image encoder - and says plainly that
-    HERO cannot start it yet.  Nothing is configured: no engine, no pack, no start script."""
-    fam = PREVIEW_FAMILIES[a.family]
-    names = list(fam["models"])
-    say()
-    say(f"  {fam['title']} - {fam['by']}: {fam['about']}")
-    warn(f"this HERO version does not run {fam['title']} yet (support is in development): setup downloads its "
-         "files, and the engine refuses them with a message until a version that runs it")
-    if a.model and a.model not in names:
-        fail(f"{fam['title']} has no {a.model} model file", "choose one of: " + ", ".join(names))
-    ram = ram_gb()
-    for i, m in enumerate(names, 1):
-        d = fam["models"][m]
-        size = fam["sha256"][fam["file"].format(q=m)][0]
-        fit = "" if ram >= d["ram_gb"] else f"   <- needs {d['ram_gb']} GB RAM, you have {ram:.0f}"
-        say(f"  {i}) {m:10s} {d['about']}; download {size / 1e9:.1f} GB{fit}")
-    if a.check:
-        return 0
-    model = a.model or names[int(ask("Which size?", [str(i) for i in range(1, len(names) + 1)], "1", a.yes)) - 1]
-    say(f"  Its license: {fam['license']}")
-    want = [fam["file"].format(q=model)]
-    if a.vision in ("yes", "gpu", "cpu"):
-        want.append(fam["mmproj"])
-    folder = Path(a.models_dir) / (fam["tag"] + model)
-    files = [folder / w for w in want]
-    left = sum(fam["sha256"][f.name][0] - (f.with_name(f.name + ".part").stat().st_size
-                                           if f.with_name(f.name + ".part").is_file() else 0)
-               for f in files if not (f.exists() and done(f))) / 1e9
-    if left and free_gb(folder) < left:
-        fail(f"not enough free disk space in {folder}: need ~{left:.0f} GB, {free_gb(folder):.0f} GB free", ("use --data-dir on a bigger drive (hero launch --data-dir)" if CONTROL else "use --models-dir on a bigger drive"))
-    if left and free_gb(folder) < left + 1:
-        warn(f"little free disk space in {folder}: {free_gb(folder):.1f} GB free for about {left:.1f} GB. Setup goes on and should fit")
-    step(5, f"downloading {fam['title']} {model}")
-    for f in files:
-        url = (fam["mmproj_hf"] if f.name == fam["mmproj"] else fam["hf"]) + f.name
-        download(url, f, "vision encoder" if f.name == fam["mmproj"] else None)
-        verify_sha256(f, *fam["sha256"][f.name])
-    ok(f"{fam['title']} {model}: {folder}")
-    say()
-    say(f"{fam['title']} is downloaded, but this HERO version cannot run it yet (its engine path is in "
-        "development); nothing was configured. Run setup again without --family qwen36 to install a model it runs.")
-    return 0
-
-
 def mac_vision(asked, model: str, ram: float) -> str:
     """The picture setting of a Mac's setup: "gpu", "cpu" or "none".  Pictures are on wherever the model can read them (owner rule
     2026-10-18) and the reader follows hero_control/vision_reader.py: on a Mac, the GPU (Metal) reader, because the memory is shared
@@ -8059,11 +7465,9 @@ def main() -> int:
     if sys.platform == "darwin" and not CONTROL and not any(a in ("-h", "--help") for a in sys.argv[1:]):
         return mac_setup(sys.argv[1:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--family", choices=list(FAMILIES) + list(PREVIEW_FAMILIES),
-                    help="qwen = Qwen3.8-Flash-Next, swift = Swift 1.5, qwen36 = Qwen3.6-35B-A3B (pictures with --vision, "
-                         "several requests at once with --parallel; docs/QWEN36.md)")
-    ap.add_argument("--model", choices=list(dict.fromkeys([*MODELS, *(m for f in PREVIEW_FAMILIES.values()
-                                                                       for m in f["models"])])))
+    ap.add_argument("--family", choices=list(FAMILIES),
+                    help="qwen = Qwen3.8-Flash-Next, swift = Swift 1.5")
+    ap.add_argument("--model", choices=list(MODELS))
     ap.add_argument("--context", type=int)
     ap.add_argument("--rope-scaling", choices=["none", "linear", "yarn"],
                     help="the RoPE extension for a context past the model's trained 262144: linear (position "
@@ -8082,17 +7486,6 @@ def main() -> int:
                     help="the most image tokens a picture becomes (default 1024 with the encoder on the GPU, 300 on "
                          "the CPU): more reads small text and charts better, and takes longer to encode; remembered "
                          "for this model")
-    # image generation (Qwen-Image): in preview, not offered in setup or --help; the options still work (docs/IMAGES.md)
-    ap.add_argument("--images", choices=["qwen-image", "no"],
-                    help=argparse.SUPPRESS)
-    ap.add_argument("--image-quant", choices=["Q4_K_M", "Q6_K", "Q8_0"],
-                    help=argparse.SUPPRESS)
-    ap.add_argument("--image-backend", choices=["cuda", "hip", "vulkan", "cpu"],
-                    help=argparse.SUPPRESS)
-    ap.add_argument("--image-native", choices=["on", "off"],
-                    help=argparse.SUPPRESS)
-    ap.add_argument("--image-gpu-policy", choices=["auto", "keep", "shrink", "unload"],
-                    help=argparse.SUPPRESS)
     ap.add_argument("--experimental-speed-projection", metavar="on|off|GGUF",
                     help="EXPERIMENTAL, off by default: the control vector in data/experimental-speed-projection "
                          "(or another GGUF) as a projection on layers 4-44; see docs/DETAILS.md")
@@ -8192,9 +7585,6 @@ def main() -> int:
     ap.add_argument("--skip-build", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
     a.build = True                                     # this artifact has no prebuilt engine: always build from source
-    if a.model and a.model not in MODELS and a.family not in PREVIEW_FAMILIES:
-        ap.error(f"--model {a.model} is a size of " + ", ".join(f"--family {f}" for f, d in PREVIEW_FAMILIES.items()
-                                                              if a.model in d["models"]))
     if a.source:
         os.environ["HERO_SOURCE"] = a.source
     if a.inspect:                                      # headers only: nothing is installed
@@ -8237,8 +7627,7 @@ def main() -> int:
             a.gpus = ",".join(str(i) for i in order)
         else:
             a.gpu = order[0]
-    say("HERO - " + (OWN_PATH_FAMILIES[a.family]["title"] if a.family in OWN_PATH_FAMILIES else "Qwen3.8-Flash-Next")
-        + " on a normal PC (a GPU + system RAM + CPU)")
+    say("HERO - Qwen3.8-Flash-Next on a normal PC (a GPU + system RAM + CPU)")
     have = installed_configs()
     # A plain start of an installed model finds everything where it already is: it creates, moves and copies nothing
     # (the model paths are in the run config; the data folder is the one settings.json remembers).  Setting up, checking,
@@ -8560,16 +7949,10 @@ def main() -> int:
             say(f"  {i}) {d['title']:20s} {d['by']} - {d['about']}" + ("   [experimental]" if d.get("experimental") else "")
                 + family_menu_note(f, hip, gpu, avx2, avx512)
                 + (f"   (recommended for Strix Halo: {STRIX_HALO_MODEL})" if f == rec_fam and rec_fam != fams[0] else ""))
-        for j, f in enumerate(OWN_PATH_FAMILIES, len(fams) + 1):   # families with an engine path of their own
-            d = OWN_PATH_FAMILIES[f]
-            say(f"  {j}) {d['title']:20s} {d['by']} - {d['about']}   [new]")
-        allf = fams + list(OWN_PATH_FAMILIES)
         if tier_note(ram, low_ram_vram(gpu)) and rec_fam == "swift":
             say("  " + tier_note(ram, low_ram_vram(gpu)))
-        family = allf[int(ask("Which model?", [str(i) for i in range(1, len(allf) + 1)],
-                              str(allf.index(rec_fam) + 1), a.yes)) - 1]
-    if family in OWN_PATH_FAMILIES:                    # Qwen3.6: its own engine path, its own steps 2-7
-        return install_own_path(a, family, gpu, hip, amd, cuda_tk, multi, port, ram, adopted)
+        family = fams[int(ask("Which model?", [str(i) for i in range(1, len(fams) + 1)],
+                              str(fams.index(rec_fam) + 1), a.yes)) - 1]
     fam = FAMILIES[family]
     if fam.get("ready") and hip:
         # not a risk the user could take: the HIP engine has no NVFP4 expert kernels at all, so it would not start
@@ -9362,8 +8745,6 @@ def main() -> int:
             cfg["vision"]["threads"] = vision_threads()
     elif a.vision_tokens is not None:
         warn("--vision-tokens: images are off for this model, so it is not used")
-    if a.images:                                       # only when given: else an earlier "images" is carried over
-        cfg["images"] = setup_images(a, gpu, hip, Path(a.models_dir))
     cfg_path = home() / f"hero-{tag.lower()}.json"
     cal = setup_calibration(cfg, hip)                  # #566: Linux HIP too; the tuning is offered on NVIDIA only
     if cal is not None:
@@ -9402,8 +8783,6 @@ def main() -> int:
     say(f"  Next time:        just run {'START-HERE.bat' if WIN else './setup.sh'} (or {script.name}) - it starts right away")
     if vision != "none":
         say("  Images:           send them in the chat page, in chat.py (/image <path>) or over the API")
-    if cfg.get("images"):
-        say(f"  Image generation: POST http://127.0.0.1:{port}/v1/images/generations (OpenAI's images API)")
     if a.parallel is None:                             # #465: the opt-in, said once (nothing changes)
         for line in parallel_note(None, [g.get("vram_gb", 0.0) for g in chosen], MODELS[model]["arena_gb"], ctx, kv,
                                   "--kv-resident" in cfg["args"]):

@@ -62,7 +62,6 @@ class Arm:
     answer: str                                  # exact | placement | nonrepeatable | quality
     set_args: dict[str, Any] = field(default_factory=dict)   # flag -> value | True (present) | None (remove)
     env: dict[str, str | None] = field(default_factory=dict)
-    families: tuple[str, ...] = ("flash-next",)
     backends: tuple[str, ...] = ("cuda", "hip")
     classes: tuple[str, ...] = ()                # machine classes (6.2) whose list this arm is on
     needs: tuple[str, ...] = ()                  # machine facts that must hold, see `condition_holds`
@@ -100,16 +99,6 @@ ARMS: tuple[Arm, ...] = (
     # --- class G: Intel Arc (SYCL): +5.5% (5/5, twice) ------------------------------------------------------------------------
     Arm("pcie_start_02", "Start with a smaller PCIe share", "placement", {"--pcie-frac": 0.2},
         backends=("sycl",), classes=("G",)),
-    # --- Qwen3.6 hybrid (class D): exact while the experts fit the card, placement-dependent when CPU experts take part ------
-    Arm("q36_workers_explicit", "Fix the CPU helper thread count", "exact", {}, families=("qwen36",),
-        backends=("cuda", "hip"), classes=("D",), dynamic={"--pool-workers": "workers"}, needs=("hybrid_experts",)),
-    Arm("q36_mtp1", "Shorter draft window (1)", "placement", {"--mtp": 1}, families=("qwen36",),
-        backends=("cuda", "hip"), classes=("D",), needs=("hybrid_experts",)),
-    Arm("q36_prefill_4096", "Larger prompt chunks (twice the prompt speed, a little slower answers)", "placement",
-        {"--prefill": 4096}, families=("qwen36",), backends=("cuda", "hip"), classes=("D",), goals=("coding",),
-        needs=("hybrid_experts",)),
-    Arm("q36_hybrid_rows_256", "Larger hybrid row blocks", "placement", {"--hybrid-rows": 256}, families=("qwen36",),
-        backends=("cuda", "hip"), classes=("D",), needs=("hybrid_experts",), deep_only=True),
     # --- thorough only: measured as no effect (spec 4.2-4.4), tried last ------------------------------------------------------
     Arm("pin_by_need", "Pin memory only when needed", "exact", {}, {"HERO_PIN_BY_NEED": "1"},
         backends=("cuda",), classes=("C",), needs=("one_gpu",), deep_only=True),
@@ -138,7 +127,6 @@ PER_REQUEST: tuple[dict[str, Any], ...] = (
 BOUNDS: dict[str, dict[str, Any]] = {
     "--spec": {"choices": (3, 4)},
     "--spec-min-p": {"min": 0.3, "max": 0.7},
-    "--mtp": {"choices": (1, 2, 3), "numeric_only": True},       # Qwen3.6; Flash-Next's --mtp is a path
     "--pcie-frac": {"min": 0.0, "max": 0.55},
     "--adapt-every": {"min": 1, "max": 4},
     "--adapt-swaps": {"min": 80, "max": 160},
@@ -167,14 +155,11 @@ NEVER: tuple[dict[str, Any], ...] = (
     {"flag": "--pcie-frac", "test": "at_least", "limit": 0.75, "when": ("pcie_bound",),
      "reason": "a high PCIe share made answers 14% to 37% slower"},
     {"flag": "--prefill", "test": "fixed_below_auto", "reason": "smaller prompt chunks made long prompts 11% to 75% slower"},
-    {"flag": "--expert-vram", "test": "without_prefill", "families": ("qwen36",),
-     "reason": "without a matching prompt chunk it made prompts 44% slower"},
     {"flag": "--spec", "test": "at_least", "limit": 6, "reason": "wider speculative windows were 4% to 16% slower"},
-    {"flag": "--spec", "test": "at_most", "limit": 2, "families": ("flash-next",), "reason": "a 2-token window was 4% to 11% slower"},
+    {"flag": "--spec", "test": "at_most", "limit": 2, "reason": "a 2-token window was 4% to 11% slower"},
     {"flag": "--lookup-chain", "reason": "it was 3% to 8.5% slower"},
     {"flag": "--vram-reserve-mib", "when": ("vram_le_8g",), "reason": "this card cannot start with a reserve"},
     {"flag": "--expert-cache", "test": "zero_or_small", "reason": "turning the GPU expert cache off or very small costs speed"},
-    {"flag": "--mtp", "test": "mtp_extreme", "families": ("qwen36",), "reason": "that draft window was 10% to 28% slower"},
 )
 
 #: Which flags change answers by themselves, for the notice on a preset (3.4).
@@ -193,7 +178,6 @@ class Context:
     """The machine and the choices a candidate plan is made for."""
 
     backend: str = "cuda"                 # cuda | hip | sycl | metal | cpu
-    family: str = "flash-next"            # flash-next | qwen36
     gpu_count: int = 1
     vram_mib: int = 0                     # the card the model runs on (smallest if several)
     ram_gib: int = 0
@@ -218,7 +202,6 @@ def condition_holds(name: str, ctx: Context) -> bool:
         "one_gpu": ctx.gpu_count <= 1,
         "two_gpus": ctx.gpu_count == 2,
         "hybrid_cpu": ctx.hybrid_cpu,
-        "hybrid_experts": bool(f.get("hybrid_experts")),
         "vram_ge_24g": ctx.vram_mib >= 24000,
         "vram_le_8g": 0 < ctx.vram_mib <= 8400,
         "gfx12": bool(ctx.arch and ctx.arch.startswith("gfx12")),
@@ -233,9 +216,6 @@ def condition_holds(name: str, ctx: Context) -> bool:
 def machine_classes(ctx: Context) -> list[str]:
     """The classes of 6.2 this machine belongs to, in the order their candidate lists are walked."""
     classes: list[str] = []
-    if ctx.family == "qwen36":
-        classes.append("D" if ctx.facts.get("hybrid_experts") else "E")
-        return classes
     if ctx.backend == "sycl":
         return ["G"]
     if condition_holds("resident_ram", ctx) or (ctx.ram_gib and ctx.model_gib and ctx.ram_gib - ctx.model_gib < 12):
@@ -278,9 +258,6 @@ def check_setting_parts(args: dict[str, Any], env: dict[str, str | None], ctx: C
     ctx_tokens = ctx.context_tokens
     default_workers = ctx.facts.get("workers")
     for rule in NEVER:
-        fams = rule.get("families")
-        if fams and ctx.family not in fams:
-            continue
         if any(not condition_holds(w, ctx) for w in rule.get("when", ())):
             continue
         if "env" in rule:
@@ -313,26 +290,16 @@ def check_setting_parts(args: dict[str, Any], env: dict[str, str | None], ctx: C
             # the config's own value is always fine; at a long context 49152 and 65536 were measured; anything else below the context is not
             hit = n is not None and n < ctx_tokens and n != own and not (ctx_tokens >= 98304 and n in (49152, 65536))
         elif test == "fixed_below_auto":
-            hit = _prefill_below_auto(value) and ctx.family == "flash-next"
-            if ctx.family == "qwen36":
-                n = _as_number(value)
-                hit = n is not None and n <= 512
-        elif test == "without_prefill":
-            hit = "--prefill" not in args and "--prefill" not in _flags_of(ctx.base_args)
+            hit = _prefill_below_auto(value)
         elif test == "zero_or_small":
             n = _as_number(value)
             hit = n is not None and str(value) != "auto" and n < 0.5 * float(ctx.facts.get("auto_slots") or 0 or 1)
-        elif test == "mtp_extreme":
-            n = _as_number(value)
-            hit = n is not None and (n == 0 or n >= 4)
         if hit:
             problems.append(f"{flag} {value}: {rule['reason']}")
     bound_problems: list[str] = []
     for flag, value in args.items():
         bound = BOUNDS.get(flag)
         if not bound or value is None or value is True:
-            continue
-        if bound.get("numeric_only") and _as_number(value) is None:
             continue
         if "choices" in bound and value not in bound["choices"] and str(value) not in [str(c) for c in bound["choices"]]:
             bound_problems.append(f"{flag} {value}: outside the safe values {list(bound['choices'])}")
@@ -415,8 +382,6 @@ def plan_arms(ctx: Context, *, mode: str = "quick", history_bad: set[str] | None
             def skip(reason: str) -> None:
                 skipped.append({"id": arm.id, "label": arm.label, "reason": reason})
 
-            if ctx.family not in arm.families:
-                continue
             if ctx.backend not in arm.backends:
                 skip(f"not a {ctx.backend} setting")
                 continue

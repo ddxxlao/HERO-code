@@ -106,7 +106,7 @@ inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y,
         }
         for (int t = 0; t < NT; ++t)
             for (int a = 1; a < A; ++a) acci[t][0] = _mm256_add_epi32(acci[t][0], acci[t][a]);
-        // EX (the DeepSeek CPU lane's rows): ggml's float order, so a token's dot is the same bits as ggml-cpu's whatever
+        // EX (the exact-order rows): ggml's float order, so a token's dot is the same bits as ggml-cpu's whatever
         // number of tokens share the pass - block scale f16(d) * y.d, the format's constant K after the sum, ggml's hsum.
         // Without EX the order of the main engine's rows (unchanged).
         const float dx = EX ? h2f(u16(blk)) : h2f(u16(blk)) * Fmt32<TY>::K;
@@ -562,7 +562,7 @@ void dot_rows_nt(int nt, const uint8_t* w, size_t row_bytes, int n, const void* 
         case 2: dot_rows<TY, 2, EX>(w, row_bytes, n, act, out, r0, r1); break;
         case 3: dot_rows<TY, 3, EX>(w, row_bytes, n, act, out, r0, r1); break;
         case 4: dot_rows<TY, 4, EX>(w, row_bytes, n, act, out, r0, r1); break;
-        case 5: if constexpr (EX) { dot_rows<TY, 5, EX>(w, row_bytes, n, act, out, r0, r1); break; }   // (the DeepSeek lane's verify
+        case 5: if constexpr (EX) { dot_rows<TY, 5, EX>(w, row_bytes, n, act, out, r0, r1); break; }   // (the exact-order verify
         [[fallthrough]];                                                                              //  rounds: one decode of 5 or 6)
         case 6: if constexpr (EX) { dot_rows<TY, 6, EX>(w, row_bytes, n, act, out, r0, r1); break; }
         [[fallthrough]];

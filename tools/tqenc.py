@@ -1,6 +1,6 @@
 """tqenc.py - Python side of the trellis encoder (tools/trellis/tqenc.cpp, built to libtqenc.so by
 `sh tools/trellis/build.sh lib`): encode / decode blocks of TQ2_T, TQK6, TQK7 and the experimental TQK5X / TQK4X, the
-input-only block Hadamard of the DeepSeek plan, and error metrics.
+input-only block Hadamard of the trellis plan, and error metrics.
 
 Rows of a tensor are blocks of 128 consecutive weights along the INPUT dimension (the GGUF fastest axis), exactly as the
 decoders read them.  A tensor of shape [rows, n] (n a multiple of 128) is encoded row by row; the output has
